@@ -1,0 +1,31 @@
+/* Managed image uploads retain their proportions while filling each public frame. */
+img.product-image,
+img.project-image {
+  height: auto;
+  object-fit: cover;
+  object-position: center;
+  width: 100%;
+}
+
+.detail-gallery__main > img,
+.detail-gallery__thumbs img {
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  width: 100%;
+}
+
+.project-gallery__item {
+  aspect-ratio: 1.14 / 1;
+  overflow: hidden;
+}
+
+.project-gallery__item--1 {
+  aspect-ratio: 1.08 / 1.25;
+}
+
+@media (max-width: 760px) {
+  .project-gallery__item--1 {
+    aspect-ratio: 1.14 / 1;
+  }
+}

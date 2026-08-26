@@ -1,0 +1,10 @@
+:root {
+  --color-ink: #232220;
+  --color-paper: #f8f6f2;
+  --color-white: #ffffff;
+  --color-orange: #ed6e3a;
+  --color-muted: #706b65;
+  --color-line: #e3dfda;
+  --font-display: Georgia, 'Times New Roman', serif;
+  --font-ui: Inter, Arial, Helvetica, sans-serif;
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="428" viewBox="0 0 1000 428" role="img" aria-labelledby="title description">
+  <title id="title">ikko homes logo</title>
+  <desc id="description">Editable vector wordmark for ikko homes with the tagline one-stop interior solution.</desc>
+  <rect width="1000" height="428" fill="#fbf8f4"/>
+  <g id="wordmark" font-family="Arial, Helvetica, sans-serif" font-size="124" font-weight="700" letter-spacing="-5">
+    <text x="170" y="253" fill="#f25d0b">ikko</text>
+    <text x="429" y="253" fill="#303033" letter-spacing="-6">homes</text>
+  </g>
+  <text id="tagline" x="172" y="294" fill="#171717" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" letter-spacing="8.2">one-stop interior solution</text>
+</svg>
