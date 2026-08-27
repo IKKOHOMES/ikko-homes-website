@@ -8,7 +8,7 @@ type CustomerAuth = {
   user: User | null;
   accessError: string;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (input: { firstName: string; lastName: string; email: string; password: string }) => Promise<'signed-in' | 'confirmation-required'>;
+  signUp: (input: { firstName: string; lastName: string; email: string; phone: string; password: string }) => Promise<'signed-in' | 'confirmation-required'>;
   signOut: () => Promise<void>;
 };
 
@@ -59,11 +59,11 @@ export function CustomerAuthProvider({ children }: PropsWithChildren) {
     if (error) throw error;
   }
 
-  async function signUp(input: { firstName: string; lastName: string; email: string; password: string }) {
+  async function signUp(input: { firstName: string; lastName: string; email: string; phone: string; password: string }) {
     setAccessError('');
     const { data, error } = await getCustomerSupabaseClient().auth.signUp({
       email: input.email, password: input.password,
-      options: { data: { first_name: input.firstName, last_name: input.lastName, account_type: 'customer' } },
+      options: { data: { first_name: input.firstName, last_name: input.lastName, phone: input.phone, account_type: 'customer' } },
     });
     if (error) throw error;
     return data.session ? 'signed-in' : 'confirmation-required';
