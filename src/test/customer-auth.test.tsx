@@ -32,9 +32,9 @@ test('marks a new frontend registration as a customer account', async () => {
   let register: ReturnType<typeof useCustomerAuth>['signUp'] | undefined;
   render(<SignUpHarness onReady={(value) => { register = value; }} />, { wrapper: Provider });
 
-  await act(async () => { await register?.({ firstName: 'Ari', lastName: 'Lee', email: 'ari@example.com', password: 'Password123' }); });
+  await act(async () => { await register?.({ firstName: 'Ari', lastName: 'Lee', email: 'ari@example.com', phone: '0400 000 000', password: 'Password123' }); });
 
   expect(signUp).toHaveBeenCalledWith(expect.objectContaining({
-    options: { data: { first_name: 'Ari', last_name: 'Lee', account_type: 'customer' } },
+    options: { data: { first_name: 'Ari', last_name: 'Lee', phone: '0400 000 000', account_type: 'customer' } },
   }));
 });
