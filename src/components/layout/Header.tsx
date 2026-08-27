@@ -35,6 +35,12 @@ export function Header() {
     return () => document.removeEventListener('mousedown', closeOnOutsideClick);
   }, [isCartOpen]);
 
+  useEffect(() => {
+    const openCart = () => setIsCartOpen(true);
+    window.addEventListener('cart:open', openCart);
+    return () => window.removeEventListener('cart:open', openCart);
+  }, []);
+
   return <>
     <header className={`site-header${isHeroPage ? ' site-header--overlay' : ' site-header--surface'}`}>
       <Link className="brand" to="/" aria-label="IKKO Homes">
