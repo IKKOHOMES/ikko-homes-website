@@ -33,7 +33,7 @@ test('shows the order function validation message', async () => {
   customerFunctionsInvoke.mockResolvedValueOnce({
     data: null,
     error: { context: new Response(JSON.stringify({ error: 'Use the email address linked to your account.' }), { status: 400 }) },
-  });
+  } as never);
 
   await expect(submitOrder([{
     id: 'line-error', kind: 'furniture', productId: 'product-1', productSlug: 'mori-chair', name: 'Mori Chair', price: 1290, quantity: 1, finish: 'Natural Oak', imageTone: 'oak',
