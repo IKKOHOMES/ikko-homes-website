@@ -8,6 +8,21 @@ export type OrderSubmission = {
   furnitureDiscountTotal: number;
 };
 
+async function messageFromOrderError(error: unknown) {
+  const fallback = 'We could not submit your order. Please try again or contact our studio.';
+  if (!error || typeof error !== 'object' || !('context' in error)) return fallback;
+  const context = (error as { context?: unknown }).context;
+  if (!(context instanceof Response)) return fallback;
+  if (context.status === 401) return 'Please log in before submitting your order.';
+  try {
+    const payload = await context.clone().json() as { error?: unknown };
+    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error;
+  } catch {
+    // The endpoint did not return a readable JSON message.
+  }
+  return fallback;
+}
+
 export function normaliseSubmissionResponse(value: unknown): OrderSubmission {
   if (!value || typeof value !== 'object') throw new Error('Unable to create the order.');
   const response = value as {
@@ -42,6 +57,6 @@ export async function submitOrder(lines: CartLine[], customer: CustomerDetails):
   });
   body.append('payload', JSON.stringify({ customer, lines: orderLines }));
   const { data, error } = await getCustomerSupabaseClient().functions.invoke('create-order', { body });
-  if (error) throw new Error('We could not submit your order. Please try again or contact our studio.');
+  if (error) throw new Error(await messageFromOrderError(error));
   return normaliseSubmissionResponse(data);
 }
