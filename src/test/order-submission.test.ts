@@ -29,6 +29,19 @@ test('rejects an incomplete checkout response', () => {
   expect(() => normaliseSubmissionResponse({ order_number: 'IKKO-1001' })).toThrow('Unable to create the order.');
 });
 
+test('shows the order function validation message', async () => {
+  customerFunctionsInvoke.mockResolvedValueOnce({
+    data: null,
+    error: { context: new Response(JSON.stringify({ error: 'Use the email address linked to your account.' }), { status: 400 }) },
+  });
+
+  await expect(submitOrder([{
+    id: 'line-error', kind: 'furniture', productId: 'product-1', productSlug: 'mori-chair', name: 'Mori Chair', price: 1290, quantity: 1, finish: 'Natural Oak', imageTone: 'oak',
+  }], {
+    firstName: 'Ari', lastName: 'Lee', email: 'ari@example.com', phone: '0400000000', address: '69 Patricia Loop', note: '',
+  })).rejects.toThrow('Use the email address linked to your account.');
+});
+
 test('submits an order with the isolated customer session', async () => {
   await submitOrder([{
     id: 'line-1', kind: 'furniture', productId: 'product-1', productSlug: 'mori-chair', name: 'Mori Chair', price: 1290, quantity: 1, finish: 'Natural Oak', imageTone: 'oak',
