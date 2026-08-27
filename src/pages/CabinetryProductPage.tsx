@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { DetailTabs } from '../components/product/DetailTabs';
 import { useCart } from '../context/CartContext';
 import { getPublicCabinetryProductByRangeSlug, type PublicCabinetryProduct } from '../lib/public-cabinetry-products';
@@ -26,7 +26,6 @@ export function CabinetryProductPage() {
   const [upload, setUpload] = useState<CabinetryUpload | null>(null);
   const [error, setError] = useState('');
   const { addCabinetry } = useCart();
-  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
@@ -52,7 +51,7 @@ export function CabinetryProductPage() {
 
   return <section className="detail-page">
     <nav className="breadcrumbs" aria-label="Breadcrumb"><Link to="/">Home</Link><span>›</span><Link to="/products">Products</Link><span>›</span><Link to={`/products/${product.rangeSlug}`}>{product.rangeName}</Link><span>›</span><span>{product.name}</span></nav>
-    <div className="detail-layout"><CabinetryGallery product={product} /><aside className="purchase-panel"><p className="eyebrow">{product.eyebrow}</p><h1>{product.name}</h1><p className="price">T.B.D.</p><p className="rating">★★★★★ <span>Design-led joinery</span></p><p className="purchase-panel__description">{product.description}</p><hr /><div className="cabinetry-scope"><b>Project scope</b><p>{product.scope}</p></div><label className="upload" htmlFor="drawing"><span>Upload your drawings</span><input id="drawing" aria-label="Upload drawings" type="file" accept=".pdf,.dwg,.jpg,.jpeg,.png" onChange={(event) => onFile(event.target.files?.[0])} /><small>{upload ? `✓ ${upload.name}` : 'PDF, DWG, JPG or PNG · up to 25 MB'}</small></label>{error && <p className="error">{error}</p>}<button disabled={!upload} className="button detail-add" onClick={() => { if (upload) { addCabinetry(product, upload); navigate('/cart'); } }}>Add {product.name} to cart</button><CabinetryTrustRow /></aside></div>
+    <div className="detail-layout"><CabinetryGallery product={product} /><aside className="purchase-panel"><p className="eyebrow">{product.eyebrow}</p><h1>{product.name}</h1><p className="price">T.B.D.</p><p className="rating">★★★★★ <span>Design-led joinery</span></p><p className="purchase-panel__description">{product.description}</p><hr /><div className="cabinetry-scope"><b>Project scope</b><p>{product.scope}</p></div><label className="upload" htmlFor="drawing"><span>Upload your drawings</span><input id="drawing" aria-label="Upload drawings" type="file" accept=".pdf,.dwg,.jpg,.jpeg,.png" onChange={(event) => onFile(event.target.files?.[0])} /><small>{upload ? `✓ ${upload.name}` : 'PDF, DWG, JPG or PNG · up to 25 MB'}</small></label>{error && <p className="error">{error}</p>}<button disabled={!upload} className="button detail-add" onClick={() => { if (upload) { addCabinetry(product, upload); window.dispatchEvent(new Event('cart:open')); } }}>Add to cart</button><CabinetryTrustRow /></aside></div>
     <DetailTabs detailContent={product.detailContent} isCabinetry productName={product.name} />
   </section>;
 }
