@@ -65,7 +65,7 @@ test('submits the durable product ID alongside the product slug', async () => {
   const invocations = customerFunctionsInvoke.mock.calls as unknown as Array<[string, { body: FormData }]>;
   const invocation = invocations.at(-1)?.[1] as { body: FormData };
   const payload = JSON.parse(String(invocation.body.get('payload')));
-  expect(payload.lines[0]).toMatchObject({ productId: '5c274229-5318-401b-b4e2-1a15c10a605e', slug: 'renamed-chair' });
+  expect(payload.lines[0]).toMatchObject({ productId: '5c274229-5318-401b-b4e2-1a15c10a605e', slug: 'renamed-chair', name: 'Renamed Chair' });
 });
 
 test('submits the selected cabinetry product name and range identity', async () => {
