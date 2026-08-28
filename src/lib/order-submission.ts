@@ -53,7 +53,7 @@ export async function submitOrder(lines: CartLine[], customer: CustomerDetails):
       body.append(`drawing:${line.id}`, line.upload.file, line.upload.name);
       return { id: line.id, kind: line.kind, cabinetryProductId: line.cabinetryProductId, rangeId: line.rangeId, name: line.name, quantity: line.quantity };
     }
-    return { id: line.id, kind: line.kind, slug: line.productSlug, quantity: line.quantity, finish: line.finish };
+    return { id: line.id, kind: line.kind, productId: line.productId, slug: line.productSlug, quantity: line.quantity, finish: line.finish };
   });
   body.append('payload', JSON.stringify({ customer, lines: orderLines }));
   const { data, error } = await getCustomerSupabaseClient().functions.invoke('create-order', { body });
