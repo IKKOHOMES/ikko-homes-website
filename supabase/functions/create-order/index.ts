@@ -41,11 +41,62 @@ function validQuantity(value: unknown) {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 99;
 }
 
+export type CheckoutFurnitureQuoteLine = {
+  displayName: string;
+  unitPrice: number;
+  quantity: number;
+  finish: string | null;
+};
+
+export type CheckoutCabinetryQuoteLine = {
+  displayName: string;
+  quantity: number;
+};
+
+export type QuoteRepository = {
+  insertQuote(input: Record<string, unknown>): Promise<{ id: string }>;
+  insertQuoteLines(lines: Array<Record<string, unknown>>): Promise<void>;
+};
+
+export async function createCheckoutQuote(
+  repository: QuoteRepository,
+  orderId: string,
+  furnitureLines: CheckoutFurnitureQuoteLine[],
+  cabinetryLines: CheckoutCabinetryQuoteLine[],
+) {
+  const total = furnitureLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  const expiresOn = new Date();
+  expiresOn.setUTCDate(expiresOn.getUTCDate() + 30);
+  const quote = await repository.insertQuote({
+    order_id: orderId,
+    version: 1,
+    status: 'draft',
+    total,
+    expires_on: expiresOn.toISOString().slice(0, 10),
+  });
+  await repository.insertQuoteLines([
+    ...furnitureLines.map((line) => ({
+      quote_id: quote.id,
+      display_name: line.displayName,
+      unit_price: line.unitPrice,
+      quantity: line.quantity,
+      is_tbd: false,
+    })),
+    ...cabinetryLines.map((line) => ({
+      quote_id: quote.id,
+      display_name: line.displayName,
+      unit_price: 0,
+      quantity: line.quantity,
+      is_tbd: true,
+    })),
+  ]);
+  return quote;
+}
 function safeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '-');
 }
 
-Deno.serve(async (request) => {
+if (import.meta.main) Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
 
@@ -145,7 +196,8 @@ Deno.serve(async (request) => {
     if (orderError || !order) throw new Error('Unable to create the order.');
     createdOrderId = order.id;
 
-    const createdFurnitureLines: Array<{ displayName: string; unitPrice: number; quantity: number; finish: string | null }> = [];
+    const createdFurnitureLines: CheckoutFurnitureQuoteLine[] = [];
+    const createdCabinetryLines: CheckoutCabinetryQuoteLine[] = [];
     for (const line of pricedFurnitureLines) {
       const { error: lineError } = await admin.from('order_lines').insert({
         order_id: order.id, line_kind: 'furniture', product_id: line.product.id, display_name: line.product.name,
@@ -172,31 +224,28 @@ Deno.serve(async (request) => {
         order_line_id: orderLine.id, storage_path: storagePath, file_name: file.name, file_size: file.size, content_type: file.type || 'application/octet-stream',
       });
       if (drawingError) throw new Error('Unable to attach the cabinetry drawing.');
+      createdCabinetryLines.push({ displayName: cabinetry.displayName, quantity: line.quantity });
     }
 
-    if (cabinetryLines.length > 0) {
-      const { error } = await admin.from('order_status_events').insert({ order_id: order.id, status: 'new', note: 'Cabinetry drawing received; quotation required.' });
-      if (error) throw new Error('Unable to finalise the order.');
-      return json({ order_number: orderNumber, document_kind: 'quote-pending', discount_percent: discountPercent, furniture_discount_total: furnitureDiscountTotal });
-    }
-
-    const { data: invoiceNumber, error: sequenceError } = await admin.rpc('reserve_invoice_number');
-    if (sequenceError || typeof invoiceNumber !== 'string') throw new Error('Unable to reserve an invoice number.');
-    const total = createdFurnitureLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
-    const { data: invoice, error: invoiceError } = await admin.from('invoices').insert({
-      invoice_number: invoiceNumber, order_id: order.id, customer_name: `${customer.first_name} ${customer.last_name}`,
-      customer_email: customer.email, customer_address: customer.address, total, status: 'issued',
-    }).select('id').single();
-    if (invoiceError || !invoice) throw new Error('Unable to create the invoice.');
-    const { error: invoiceLinesError } = await admin.from('invoice_lines').insert(createdFurnitureLines.map((line) => ({
-      invoice_id: invoice.id, display_name: line.displayName, unit_price: line.unitPrice, quantity: line.quantity, finish: line.finish,
-    })));
-    if (invoiceLinesError) throw new Error('Unable to create the invoice lines.');
-    const { error: statusError } = await admin.from('orders').update({ status: 'invoiced' }).eq('id', order.id);
-    if (statusError) throw new Error('Unable to finalise the order.');
-    const { error: eventError } = await admin.from('order_status_events').insert({ order_id: order.id, status: 'invoiced', note: `Invoice ${invoiceNumber} issued.` });
+    const quoteRepository: QuoteRepository = {
+      insertQuote: async (input) => {
+        const { data, error } = await admin.from('quotes').insert(input).select('id').single();
+        if (error || !data) throw new Error('Unable to create Quote v1.');
+        return data;
+      },
+      insertQuoteLines: async (quoteLines) => {
+        const { error } = await admin.from('quote_lines').insert(quoteLines);
+        if (error) throw new Error('Unable to create Quote v1 lines.');
+      },
+    };
+    await createCheckoutQuote(quoteRepository, order.id, createdFurnitureLines, createdCabinetryLines);
+    const { error: eventError } = await admin.from('order_status_events').insert({
+      order_id: order.id,
+      status: 'new',
+      note: 'Quote v1 generated.',
+    });
     if (eventError) throw new Error('Unable to finalise the order.');
-    return json({ order_number: orderNumber, document_kind: 'invoice', discount_percent: discountPercent, furniture_discount_total: furnitureDiscountTotal });
+    return json({ order_number: orderNumber, document_kind: 'quote-pending', discount_percent: discountPercent, furniture_discount_total: furnitureDiscountTotal });
   } catch (error) {
     if (createdOrderId) await admin.from('orders').delete().eq('id', createdOrderId);
     if (uploadedPaths.length) await admin.storage.from('cabinetry-drawings').remove(uploadedPaths);

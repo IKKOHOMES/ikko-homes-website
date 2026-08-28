@@ -2,7 +2,7 @@ import { expect, test, vi } from 'vitest';
 
 const publicFunctionsInvoke = vi.fn();
 const customerFunctionsInvoke = vi.fn(async () => ({
-  data: { order_number: 'IKKO-1001', document_kind: 'invoice', discount_percent: 0, furniture_discount_total: 0 },
+  data: { order_number: 'IKKO-1001', document_kind: 'quote-pending', discount_percent: 0, furniture_discount_total: 0 },
   error: null,
 }));
 
@@ -86,4 +86,10 @@ test('submits the selected cabinetry product name and range identity', async () 
     id: 'cabinetry-line-1', kind: 'cabinetry', cabinetryProductId: 'cabinetry-japandi', rangeId: 'range-japandi',
     name: 'Japandi Cabinetry', quantity: 1,
   }]);
+});
+
+test('rejects a checkout response that attempts to issue an invoice immediately', () => {
+  expect(() => normaliseSubmissionResponse({
+    order_number: 'IKKO-1001', document_kind: 'invoice', discount_percent: 0, furniture_discount_total: 0,
+  })).toThrow('Unable to create the order.');
 });

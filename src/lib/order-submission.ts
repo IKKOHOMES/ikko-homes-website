@@ -3,7 +3,7 @@ import type { CartLine, CustomerDetails } from '../types/order';
 
 export type OrderSubmission = {
   orderNumber: string;
-  documentKind: 'invoice' | 'quote-pending';
+  documentKind: 'quote-pending';
   discountPercent: number;
   furnitureDiscountTotal: number;
 };
@@ -31,7 +31,7 @@ export function normaliseSubmissionResponse(value: unknown): OrderSubmission {
     discount_percent?: unknown;
     furniture_discount_total?: unknown;
   };
-  if (typeof response.order_number !== 'string' || (response.document_kind !== 'invoice' && response.document_kind !== 'quote-pending')) {
+  if (typeof response.order_number !== 'string' || response.document_kind !== 'quote-pending') {
     throw new Error('Unable to create the order.');
   }
   if (typeof response.discount_percent !== 'number' || typeof response.furniture_discount_total !== 'number') {
