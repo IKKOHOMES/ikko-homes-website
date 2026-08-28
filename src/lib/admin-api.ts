@@ -3,7 +3,9 @@ import { compressPublicImage } from './image-compression';
 import type { AdminCustomer, AdminOrder, BlogPost, BlogStatus, InvoiceStatus, ManagedCabinetryImage, ManagedCabinetryProduct, ManagedHomeContent, ManagedHomeThemeBlock, ManagedPaletteItem, ManagedProduct, ManagedProductCategory, ManagedProject, ManagedServicePillar, ManagedStyleRange, OrderStatus, ProductColour } from '../types/domain';
 import { loadExistingSampleAssets, loadExistingSampleRecords } from './sample-content';
 import { normaliseProductDetailContent, type ProductDetailContent } from '../types/product-detail-content';
+import { validatePaymentPlan, type PaymentPlanDraft } from './payment-plan';
 
+export type PaymentPlanInstalment = PaymentPlanDraft & { id: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; paidAt: string | null };
 export type EditableQuoteLine = { id?: string; displayName: string; unitPrice: number; quantity: number; isTbd: boolean };
 export type QuoteSaveInput = { quoteId: string; orderId: string; expiresOn: string; internalNote: string; lines: EditableQuoteLine[] };
 export type EditableQuote = { id: string; orderId: string; version: number; status: 'draft' | 'confirmed'; total: number; expiresOn: string; internalNote: string; createdAt?: string; lines: EditableQuoteLine[] };
@@ -14,6 +16,7 @@ export type AdminOrderDetail = {
   lines: Array<{ id: string; name: string; kind: 'furniture' | 'cabinetry'; unitPrice: number | null; quantity: number; finish: string | null }>;
   drawings: Array<{ fileName: string; signedUrl: string | null }>;
   quotes: EditableQuote[];
+  paymentPlan: PaymentPlanInstalment[];
 };
 type OrderRow = {
   id: string;
@@ -53,12 +56,13 @@ type DetailRow = Omit<OrderRow, 'customers' | 'order_lines' | 'quotes'> & {
   internal_note: string;
   customers: { id: string; first_name: string; last_name: string; email: string; phone: string; address: string } | null;
   order_lines: Array<{ id: string; line_kind: 'furniture' | 'cabinetry'; display_name: string; unit_price: number | string | null; quantity: number; finish: string | null; cabinetry_drawings: Array<{ storage_path: string; file_name: string }> }>;
-  quotes: Array<{ id: string; version: number; status: 'draft' | 'confirmed'; total: number | string; expires_on: string; internal_note: string; created_at: string; quote_lines: Array<{ id: string; display_name: string; unit_price: number | string; quantity: number; is_tbd: boolean }> }>;
+  quotes: Array<{ id: string; version: number; status: 'draft' | 'confirmed'; total: number | string; expires_on: string; internal_note: string; created_at: string; quote_lines: Array<{ id: string; display_name: string; unit_price: number | string; quantity: number; is_tbd: boolean }> }> ;
+  payment_plan_instalments: Array<{ id: string; sequence: number; label: string; amount: number | string; due_on: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; internal_note: string; paid_at: string | null }>;
 };
 
 export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
   const client = getAdminSupabaseClient();
-  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(status), quotes(id, version, status, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd))').eq('id', id).single();
+  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(status), quotes(id, version, status, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd)), payment_plan_instalments(id, sequence, label, amount, due_on, status, internal_note, paid_at)').eq('id', id).single();
   if (error || !data) throw new Error('Unable to load the order.');
   const row = data as unknown as DetailRow;
   const order = mapAdminOrderRow(row);
@@ -73,6 +77,7 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
     internalNote: row.internal_note,
     lines: row.order_lines.map((line) => ({ id: line.id, name: line.display_name, kind: line.line_kind, unitPrice: line.unit_price === null ? null : Number(line.unit_price), quantity: line.quantity, finish: line.finish })),
     drawings,
+    paymentPlan: (row.payment_plan_instalments ?? []).sort((a, b) => a.sequence - b.sequence).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount), dueOn: line.due_on, status: line.status, internalNote: line.internal_note, paidAt: line.paid_at })),
     quotes: row.quotes.map((quote) => ({ id: quote.id, orderId: row.id, version: quote.version, status: quote.status, total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at, lines: (quote.quote_lines ?? []).map((line) => ({ id: line.id, displayName: line.display_name, unitPrice: Number(line.unit_price), quantity: line.quantity, isTbd: line.is_tbd })) })).sort((a, b) => b.version - a.version),
   };
 }
@@ -129,6 +134,20 @@ export async function confirmQuote(orderId: string, quoteId: string): Promise<vo
   if (orderError) throw new Error('Unable to update order status.');
   const { error: eventError } = await client.from('order_status_events').insert({ order_id: orderId, status: 'quoted', note: 'Quotation confirmed.' });
   if (eventError) throw new Error('Unable to update order history.');
+}
+export async function savePaymentPlan(orderId: string, quoteId: string, instalments: PaymentPlanDraft[]): Promise<void> {
+  const client = getAdminSupabaseClient();
+  const { data: quote, error: quoteError } = await client.from('quotes').select('id, total, status').eq('id', quoteId).eq('order_id', orderId).single();
+  if (quoteError || !quote || quote.status !== 'confirmed') throw new Error('A confirmed quote is required.');
+  const validation = validatePaymentPlan(instalments, Number(quote.total));
+  if (!validation.valid) throw new Error(validation.message);
+  const { data: issued, error: issuedError } = await client.from('payment_plan_instalments').select('id').eq('order_id', orderId).neq('status', 'draft').limit(1);
+  if (issuedError) throw new Error('Unable to save the payment plan.');
+  if (issued?.length) throw new Error('Issued instalments cannot be changed.');
+  const { error: deleteError } = await client.from('payment_plan_instalments').delete().eq('order_id', orderId).eq('quote_id', quoteId).eq('status', 'draft');
+  if (deleteError) throw new Error('Unable to save the payment plan.');
+  const { error: insertError } = await client.from('payment_plan_instalments').insert(instalments.map((line, sequence) => ({ order_id: orderId, quote_id: quoteId, sequence: sequence + 1, label: line.label.trim(), amount: line.amount, due_on: line.dueOn, internal_note: line.internalNote.trim(), status: 'draft' })));
+  if (insertError) throw new Error('Unable to save the payment plan.');
 }
 type CustomerRow = { id: string; first_name: string; last_name: string; email: string; phone: string; address: string; auth_user_id: string | null; discount_percent: number | string; orders: Array<{ created_at: string }> };
 
