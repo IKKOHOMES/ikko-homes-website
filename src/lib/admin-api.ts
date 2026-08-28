@@ -17,6 +17,7 @@ export type AdminOrderDetail = {
   drawings: Array<{ fileName: string; signedUrl: string | null }>;
   quotes: EditableQuote[];
   paymentPlan: PaymentPlanInstalment[];
+  invoices: Array<{ id: string; number: string; total: number; status: InvoiceStatus; dueOn: string | null; paidAt: string | null }>;
 };
 type OrderRow = {
   id: string;
@@ -52,17 +53,18 @@ export async function listAdminOrders(filters: { query?: string; status?: OrderS
   });
 }
 
-type DetailRow = Omit<OrderRow, 'customers' | 'order_lines' | 'quotes'> & {
+type DetailRow = Omit<OrderRow, 'customers' | 'order_lines' | 'quotes' | 'invoices'> & {
   internal_note: string;
   customers: { id: string; first_name: string; last_name: string; email: string; phone: string; address: string } | null;
   order_lines: Array<{ id: string; line_kind: 'furniture' | 'cabinetry'; display_name: string; unit_price: number | string | null; quantity: number; finish: string | null; cabinetry_drawings: Array<{ storage_path: string; file_name: string }> }>;
   quotes: Array<{ id: string; version: number; status: 'draft' | 'confirmed'; total: number | string; expires_on: string; internal_note: string; created_at: string; quote_lines: Array<{ id: string; display_name: string; unit_price: number | string; quantity: number; is_tbd: boolean }> }> ;
+  invoices: Array<{ id: string; invoice_number: string; total: number | string; status: InvoiceStatus; due_on: string | null; paid_at: string | null }>;
   payment_plan_instalments: Array<{ id: string; sequence: number; label: string; amount: number | string; due_on: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; internal_note: string; paid_at: string | null }>;
 };
 
 export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
   const client = getAdminSupabaseClient();
-  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(status), quotes(id, version, status, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd)), payment_plan_instalments(id, sequence, label, amount, due_on, status, internal_note, paid_at)').eq('id', id).single();
+  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(id, invoice_number, total, status, due_on, paid_at), quotes(id, version, status, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd)), payment_plan_instalments(id, sequence, label, amount, due_on, status, internal_note, paid_at)').eq('id', id).single();
   if (error || !data) throw new Error('Unable to load the order.');
   const row = data as unknown as DetailRow;
   const order = mapAdminOrderRow(row);
@@ -77,6 +79,7 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
     internalNote: row.internal_note,
     lines: row.order_lines.map((line) => ({ id: line.id, name: line.display_name, kind: line.line_kind, unitPrice: line.unit_price === null ? null : Number(line.unit_price), quantity: line.quantity, finish: line.finish })),
     drawings,
+    invoices: (row.invoices ?? []).map((invoice) => ({ id: invoice.id, number: invoice.invoice_number, total: Number(invoice.total), status: invoice.status, dueOn: invoice.due_on, paidAt: invoice.paid_at })),
     paymentPlan: (row.payment_plan_instalments ?? []).sort((a, b) => a.sequence - b.sequence).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount), dueOn: line.due_on, status: line.status, internalNote: line.internal_note, paidAt: line.paid_at })),
     quotes: row.quotes.map((quote) => ({ id: quote.id, orderId: row.id, version: quote.version, status: quote.status, total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at, lines: (quote.quote_lines ?? []).map((line) => ({ id: line.id, displayName: line.display_name, unitPrice: Number(line.unit_price), quantity: line.quantity, isTbd: line.is_tbd })) })).sort((a, b) => b.version - a.version),
   };
@@ -148,6 +151,18 @@ export async function savePaymentPlan(orderId: string, quoteId: string, instalme
   if (deleteError) throw new Error('Unable to save the payment plan.');
   const { error: insertError } = await client.from('payment_plan_instalments').insert(instalments.map((line, sequence) => ({ order_id: orderId, quote_id: quoteId, sequence: sequence + 1, label: line.label.trim(), amount: line.amount, due_on: line.dueOn, internal_note: line.internalNote.trim(), status: 'draft' })));
   if (insertError) throw new Error('Unable to save the payment plan.');
+}
+export async function markInvoicePaid(invoiceId: string, paidAt: string, internalNote: string): Promise<void> {
+  const client = getAdminSupabaseClient();
+  const { data: invoice, error: invoiceError } = await client.from('invoices').update({ status: 'paid', paid_at: paidAt }).eq('id', invoiceId).eq('status', 'issued').select('id, order_id, invoice_number, payment_plan_instalment_id').single();
+  if (invoiceError || !invoice || !invoice.payment_plan_instalment_id) throw new Error('Unable to mark the invoice as paid.');
+  const { error: instalmentError } = await client.from('payment_plan_instalments').update({ status: 'paid', paid_at: paidAt }).eq('id', invoice.payment_plan_instalment_id).eq('status', 'issued');
+  if (instalmentError) throw new Error('Unable to mark the instalment as paid.');
+  const { count, error: outstandingError } = await client.from('payment_plan_instalments').select('id', { count: 'exact', head: true }).eq('order_id', invoice.order_id).in('status', ['issued', 'overdue']);
+  if (outstandingError) throw new Error('Unable to update payment status.');
+  const note = internalNote.trim() ? ` Payment note: ${internalNote.trim()}` : '';
+  if ((count ?? 0) === 0) { const { error: completeError } = await client.from('orders').update({ status: 'completed' }).eq('id', invoice.order_id); if (completeError) throw new Error('Unable to complete the order.'); const { error: eventError } = await client.from('order_status_events').insert({ order_id: invoice.order_id, status: 'completed', note: `Invoice ${invoice.invoice_number} marked paid; all instalments received.${note}` }); if (eventError) throw new Error('Unable to update order history.'); return; }
+  const { error: eventError } = await client.from('order_status_events').insert({ order_id: invoice.order_id, status: 'invoiced', note: `Invoice ${invoice.invoice_number} marked paid.${note}` }); if (eventError) throw new Error('Unable to update order history.');
 }
 type CustomerRow = { id: string; first_name: string; last_name: string; email: string; phone: string; address: string; auth_user_id: string | null; discount_percent: number | string; orders: Array<{ created_at: string }> };
 

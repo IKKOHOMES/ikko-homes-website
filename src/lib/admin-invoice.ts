@@ -1,14 +1,13 @@
 import { getAdminSupabaseClient } from './supabase';
 
-export function normaliseInvoiceResponse(value: unknown) {
-  if (!value || typeof value !== 'object' || typeof (value as { invoice_number?: unknown }).invoice_number !== 'string') {
-    throw new Error('Unable to issue the invoice.');
-  }
-  return { invoiceNumber: (value as { invoice_number: string }).invoice_number };
+export type GeneratedInvoice = { id: string; invoiceNumber: string; instalmentId: string };
+export function normaliseInvoiceResponse(value: unknown): { invoices: GeneratedInvoice[] } {
+  if (!value || typeof value !== 'object' || !Array.isArray((value as { invoices?: unknown }).invoices)) throw new Error('Unable to issue the invoice.');
+  const invoices = (value as { invoices: unknown[] }).invoices.map((invoice) => {
+    const value = invoice as { id?: unknown; invoice_number?: unknown; instalment_id?: unknown };
+    if (typeof value.id !== 'string' || typeof value.invoice_number !== 'string' || typeof value.instalment_id !== 'string') throw new Error('Unable to issue the invoice.');
+    return { id: value.id, invoiceNumber: value.invoice_number, instalmentId: value.instalment_id };
+  });
+  return { invoices };
 }
-
-export async function issueInvoice(orderId: string) {
-  const { data, error } = await getAdminSupabaseClient().functions.invoke('admin-invoice', { body: { order_id: orderId } });
-  if (error) throw new Error('Unable to issue the invoice.');
-  return normaliseInvoiceResponse(data);
-}
+export async function issueInvoice(orderId: string) { const { data, error } = await getAdminSupabaseClient().functions.invoke('admin-invoice', { body: { order_id: orderId } }); if (error) throw new Error('Unable to issue the invoice.'); return normaliseInvoiceResponse(data); }

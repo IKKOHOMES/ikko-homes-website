@@ -13,6 +13,8 @@ type CustomerInvoice = {
   total: number | string;
   status: string;
   created_at: string;
+  due_on: string | null;
+  paid_at: string | null;
   invoice_lines: InvoiceLine[];
   orders: { order_number: string; discount_percent: number | string; furniture_discount_total: number | string } | null;
 };
@@ -29,7 +31,7 @@ export function CustomerInvoicePage() {
     if (!user || !invoiceId) return;
     let active = true;
     void getCustomerSupabaseClient().from('invoices')
-      .select('id, invoice_number, customer_name, customer_email, customer_address, total, status, created_at, invoice_lines(id, display_name, unit_price, quantity, finish), orders(order_number, discount_percent, furniture_discount_total)')
+      .select('id, invoice_number, customer_name, customer_email, customer_address, total, status, created_at, due_on, paid_at, invoice_lines(id, display_name, unit_price, quantity, finish), orders(order_number, discount_percent, furniture_discount_total)')
       .eq('id', invoiceId).maybeSingle()
       .then(({ data, error: queryError }) => {
         if (!active) return;
@@ -48,7 +50,7 @@ export function CustomerInvoicePage() {
     {error && <p className="error" role="alert">{error}</p>}
     {!error && !invoice && <p>Loading invoice…</p>}
     {invoice && <article className="customer-invoice__sheet">
-      <header><div><p className="eyebrow">IKKO Homes</p><h1>Invoice</h1></div><div><b>{invoice.invoice_number}</b><span>Issued {new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(invoice.created_at))}</span><span className="status-badge">{invoice.status}</span></div></header>
+      <header><div><p className="eyebrow">IKKO Homes</p><h1>Invoice</h1></div><div><b>{invoice.invoice_number}</b><span>Issued {new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(invoice.created_at))}</span>{invoice.due_on && <span>Due {new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(invoice.due_on))}</span>}{invoice.paid_at && <span>Paid {new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(new Date(invoice.paid_at))}</span>}<span className="status-badge">{invoice.status}</span></div></header>
       <section className="customer-invoice__address"><div><p className="eyebrow">Bill to</p><b>{invoice.customer_name}</b><span>{invoice.customer_email}</span><span>{invoice.customer_address}</span></div><div><p className="eyebrow">Order</p><b>{invoice.orders?.order_number ?? '—'}</b><span>Furniture discount locked at {Number(invoice.orders?.discount_percent ?? 0)}%</span></div></section>
       <div className="customer-invoice__lines"><div className="customer-invoice__line customer-invoice__line--head"><span>Item</span><span>Qty</span><span>Total</span></div>{invoice.invoice_lines.map((line) => <div className="customer-invoice__line" key={line.id}><span><b>{line.display_name}</b>{line.finish && <small>{line.finish}</small>}</span><span>{line.quantity}</span><span>{currency(Number(line.unit_price) * line.quantity)}</span></div>)}</div>
       <footer><span>Furniture discount saved: {currency(invoice.orders?.furniture_discount_total ?? 0)}</span><b>Total {currency(invoice.total)}</b></footer>
