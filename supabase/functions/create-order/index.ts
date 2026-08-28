@@ -126,7 +126,7 @@ Deno.serve(async (request) => {
     const discountPercent = signedInUser && customer.auth_user_id === signedInUser.id ? Number(customer.discount_percent) : 0;
     const pricedFurnitureLines = furnitureLines.map((line, index) => {
       const product = resolvedFurnitureProducts[index];
-      if (!product) throw new Error('One or more products are no longer available.');
+      if (!product) throw new Error(`One or more products are no longer available. (productId: ${String(line.productId ?? 'none')}; slug: ${String(line.slug ?? 'none')}; name: ${String(line.name ?? 'none')})`);
       const finish = typeof line.finish === 'string' && line.finish.trim() ? line.finish.trim() : null;
       const price = calculateFurniturePrice(Number(product.price), discountPercent, line.quantity as number);
       return { product, quantity: line.quantity as number, finish, ...price };
