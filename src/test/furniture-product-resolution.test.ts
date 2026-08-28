@@ -18,7 +18,7 @@ describe('resolveFurnitureProducts', () => {
       lookup,
     );
 
-    expect(products.get('6bdd4e36-17e7-4df1-b377-e1de5bf3e010')?.name).toBe('Japanese Modern Sofa 041');
+    expect(products[0]?.name).toBe('Japanese Modern Sofa 041');
     expect(lookup).toHaveBeenCalledTimes(1);
   });
 });
