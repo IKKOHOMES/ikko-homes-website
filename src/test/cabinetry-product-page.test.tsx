@@ -18,7 +18,7 @@ test('shows the range-owned cabinetry product and gates cart addition on a drawi
   render(<App />);
 
   expect(await screen.findByRole('heading', { name: 'Japandi Cabinetry' })).toBeInTheDocument();
-  const addButton = screen.getByRole('button', { name: 'Add Japandi Cabinetry to cart' });
+  const addButton = screen.getByRole('button', { name: 'Add to cart' });
   expect(addButton).toBeDisabled();
 
   fireEvent.change(screen.getByLabelText('Upload drawings'), {

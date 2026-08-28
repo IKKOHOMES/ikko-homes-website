@@ -14,7 +14,7 @@ test('cabinetry detail keeps the upload gate inside the reference detail layout'
   render(<App />);
 
   expect(await screen.findByText('T.B.D.')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Add Japanese Modern Cabinetry to cart' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled();
   expect(screen.getByRole('tab', { name: 'Description' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: /you may also like/i })).not.toBeInTheDocument();
 });
@@ -23,7 +23,7 @@ test('cabinetry upload gate closes again after an invalid replacement file', asy
   window.history.pushState({}, '', '/products/japanese-modern/cabinetry');
   render(<App />);
   const upload = await screen.findByLabelText('Upload drawings');
-  const addButton = screen.getByRole('button', { name: 'Add Japanese Modern Cabinetry to cart' });
+  const addButton = screen.getByRole('button', { name: 'Add to cart' });
 
   fireEvent.change(upload, { target: { files: [new File(['drawing'], 'kitchen-plan.pdf', { type: 'application/pdf' })] } });
   expect(addButton).toBeEnabled();
