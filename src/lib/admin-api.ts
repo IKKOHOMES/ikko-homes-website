@@ -4,16 +4,17 @@ import type { AdminCustomer, AdminOrder, BlogPost, BlogStatus, InvoiceStatus, Ma
 import { loadExistingSampleAssets, loadExistingSampleRecords } from './sample-content';
 import { normaliseProductDetailContent, type ProductDetailContent } from '../types/product-detail-content';
 
-export type QuoteSaveInput = { orderId: string; total: number; expiresOn: string; internalNote: string };
+export type EditableQuoteLine = { id?: string; displayName: string; unitPrice: number; quantity: number; isTbd: boolean };
+export type QuoteSaveInput = { quoteId: string; orderId: string; expiresOn: string; internalNote: string; lines: EditableQuoteLine[] };
+export type EditableQuote = { id: string; orderId: string; version: number; status: 'draft' | 'confirmed'; total: number; expiresOn: string; internalNote: string; createdAt?: string; lines: EditableQuoteLine[] };
 export type AdminOrderDetail = {
   order: AdminOrder;
   customer: { email: string; phone: string; address: string };
   internalNote: string;
   lines: Array<{ id: string; name: string; kind: 'furniture' | 'cabinetry'; unitPrice: number | null; quantity: number; finish: string | null }>;
   drawings: Array<{ fileName: string; signedUrl: string | null }>;
-  quotes: Array<{ id: string; version: number; total: number; expiresOn: string; internalNote: string; createdAt: string }>;
+  quotes: EditableQuote[];
 };
-
 type OrderRow = {
   id: string;
   order_number: string;
@@ -52,12 +53,12 @@ type DetailRow = Omit<OrderRow, 'customers' | 'order_lines' | 'quotes'> & {
   internal_note: string;
   customers: { id: string; first_name: string; last_name: string; email: string; phone: string; address: string } | null;
   order_lines: Array<{ id: string; line_kind: 'furniture' | 'cabinetry'; display_name: string; unit_price: number | string | null; quantity: number; finish: string | null; cabinetry_drawings: Array<{ storage_path: string; file_name: string }> }>;
-  quotes: Array<{ id: string; version: number; total: number | string; expires_on: string; internal_note: string; created_at: string }>;
+  quotes: Array<{ id: string; version: number; status: 'draft' | 'confirmed'; total: number | string; expires_on: string; internal_note: string; created_at: string; quote_lines: Array<{ id: string; display_name: string; unit_price: number | string; quantity: number; is_tbd: boolean }> }>;
 };
 
 export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
   const client = getAdminSupabaseClient();
-  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(status), quotes(id, version, total, expires_on, internal_note, created_at)').eq('id', id).single();
+  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(status), quotes(id, version, status, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd))').eq('id', id).single();
   if (error || !data) throw new Error('Unable to load the order.');
   const row = data as unknown as DetailRow;
   const order = mapAdminOrderRow(row);
@@ -72,7 +73,7 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
     internalNote: row.internal_note,
     lines: row.order_lines.map((line) => ({ id: line.id, name: line.display_name, kind: line.line_kind, unitPrice: line.unit_price === null ? null : Number(line.unit_price), quantity: line.quantity, finish: line.finish })),
     drawings,
-    quotes: row.quotes.map((quote) => ({ id: quote.id, version: quote.version, total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at })).sort((a, b) => b.version - a.version),
+    quotes: row.quotes.map((quote) => ({ id: quote.id, orderId: row.id, version: quote.version, status: quote.status, total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at, lines: (quote.quote_lines ?? []).map((line) => ({ id: line.id, displayName: line.display_name, unitPrice: Number(line.unit_price), quantity: line.quantity, isTbd: line.is_tbd })) })).sort((a, b) => b.version - a.version),
   };
 }
 
@@ -81,26 +82,54 @@ export function quoteDisplayNameForLines(lines: Array<{ line_kind: 'furniture' |
   if (!cabinetry) throw new Error('Unable to create quotation.');
   return cabinetry.display_name;
 }
-
-export async function saveQuote(input: QuoteSaveInput): Promise<string> {
-  const client = getAdminSupabaseClient();
-  const { data: current, error: currentError } = await client.from('quotes').select('version').eq('order_id', input.orderId);
-  if (currentError) throw new Error('Unable to create quotation.');
-  const version = Math.max(0, ...(current ?? []).map((quote) => quote.version)) + 1;
-  const { data: quote, error: quoteError } = await client.from('quotes').insert({ order_id: input.orderId, version, total: input.total, expires_on: input.expiresOn, internal_note: input.internalNote }).select('id').single();
-  if (quoteError || !quote) throw new Error('Unable to create quotation.');
-  const { data: orderLines, error: orderLinesError } = await client.from('order_lines').select('line_kind, display_name').eq('order_id', input.orderId);
-  if (orderLinesError) throw new Error('Unable to create quotation.');
-  const displayName = quoteDisplayNameForLines((orderLines ?? []) as Array<{ line_kind: 'furniture' | 'cabinetry'; display_name: string }>);
-  const { error: lineError } = await client.from('quote_lines').insert({ quote_id: quote.id, display_name: displayName, unit_price: input.total, quantity: 1 });
-  if (lineError) throw new Error('Unable to save quotation lines.');
-  const { error: orderError } = await client.from('orders').update({ status: 'quoted', internal_note: input.internalNote }).eq('id', input.orderId);
-  if (orderError) throw new Error('Unable to update order status.');
-  const { error: eventError } = await client.from('order_status_events').insert({ order_id: input.orderId, status: 'quoted', note: `Quotation v${version} prepared.` });
-  if (eventError) throw new Error('Unable to update order history.');
-  return quote.id;
+function quoteTotal(lines: EditableQuoteLine[]) {
+  return lines.reduce((total, line) => total + (line.isTbd ? 0 : line.unitPrice * line.quantity), 0);
 }
 
+function validateQuoteSave(input: QuoteSaveInput) {
+  if (!input.expiresOn || !input.lines.length) throw new Error('Unable to save quotation.');
+  if (input.lines.some((line) => !line.displayName.trim() || !Number.isInteger(line.quantity) || line.quantity <= 0 || (!line.isTbd && (!Number.isFinite(line.unitPrice) || line.unitPrice < 0)))) throw new Error('Unable to save quotation.');
+}
+
+export async function saveQuote(input: QuoteSaveInput): Promise<string> {
+  validateQuoteSave(input);
+  const client = getAdminSupabaseClient();
+  const { data: current, error: currentError } = await client.from('quotes').select('id, version, status').eq('id', input.quoteId).eq('order_id', input.orderId).single();
+  if (currentError || !current) throw new Error('Unable to save quotation.');
+  const total = quoteTotal(input.lines);
+  let quoteId = current.id;
+  let version = current.version;
+  if (current.status === 'confirmed') {
+    const { data: latest, error: latestError } = await client.from('quotes').select('version').eq('order_id', input.orderId);
+    if (latestError) throw new Error('Unable to save quotation.');
+    version = Math.max(0, ...(latest ?? []).map((quote) => quote.version)) + 1;
+    const { data: created, error: createError } = await client.from('quotes').insert({ order_id: input.orderId, version, status: 'draft', total, expires_on: input.expiresOn, internal_note: input.internalNote }).select('id').single();
+    if (createError || !created) throw new Error('Unable to save quotation.');
+    quoteId = created.id;
+  } else {
+    const { error: updateError } = await client.from('quotes').update({ total, expires_on: input.expiresOn, internal_note: input.internalNote }).eq('id', quoteId);
+    if (updateError) throw new Error('Unable to save quotation.');
+    const { error: deleteError } = await client.from('quote_lines').delete().eq('quote_id', quoteId);
+    if (deleteError) throw new Error('Unable to save quotation lines.');
+  }
+  const { error: linesError } = await client.from('quote_lines').insert(input.lines.map((line) => ({ quote_id: quoteId, display_name: line.displayName.trim(), unit_price: line.isTbd ? 0 : line.unitPrice, quantity: line.quantity, is_tbd: line.isTbd })));
+  if (linesError) throw new Error('Unable to save quotation lines.');
+  const { error: eventError } = await client.from('order_status_events').insert({ order_id: input.orderId, status: 'new', note: `Quotation v${version} saved.` });
+  if (eventError) throw new Error('Unable to update order history.');
+  return quoteId;
+}
+
+export async function confirmQuote(orderId: string, quoteId: string): Promise<void> {
+  const client = getAdminSupabaseClient();
+  const { data: quote, error: quoteError } = await client.from('quotes').select('id, expires_on, quote_lines(display_name, unit_price, quantity, is_tbd)').eq('id', quoteId).eq('order_id', orderId).single();
+  if (quoteError || !quote || !quote.expires_on || (quote.quote_lines ?? []).some((line) => line.is_tbd || !line.display_name.trim() || Number(line.unit_price) < 0 || Number(line.quantity) <= 0)) throw new Error('Unable to confirm quotation.');
+  const { error: quoteUpdateError } = await client.from('quotes').update({ status: 'confirmed', confirmed_at: new Date().toISOString() }).eq('id', quoteId);
+  if (quoteUpdateError) throw new Error('Unable to confirm quotation.');
+  const { error: orderError } = await client.from('orders').update({ status: 'quoted' }).eq('id', orderId);
+  if (orderError) throw new Error('Unable to update order status.');
+  const { error: eventError } = await client.from('order_status_events').insert({ order_id: orderId, status: 'quoted', note: 'Quotation confirmed.' });
+  if (eventError) throw new Error('Unable to update order history.');
+}
 type CustomerRow = { id: string; first_name: string; last_name: string; email: string; phone: string; address: string; auth_user_id: string | null; discount_percent: number | string; orders: Array<{ created_at: string }> };
 
 export function mapAdminCustomerRow(row: CustomerRow): AdminCustomer {
