@@ -82,7 +82,7 @@ Deno.serve(async (request) => {
         .select('id, slug, name, price')
         .eq('is_active', true)
         .in(field, values);
-      if (error) throw new Error('Unable to verify the products in your cart.');
+      if (error) throw new Error(`Unable to verify the products in your cart. (${field}: ${error.message})`);
       return data ?? [];
     });
 
