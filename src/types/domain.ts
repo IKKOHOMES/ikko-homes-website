@@ -1,7 +1,8 @@
 import type { ProductDetailContent } from './product-detail-content';
 
 export type OrderStatus = 'new' | 'reviewing' | 'quoted' | 'invoiced' | 'completed';
-export type InvoiceStatus = 'issued' | 'void';
+export type InvoiceStatus = 'issued' | 'paid' | 'void';
+export type PaymentInstalmentStatus = 'draft' | 'issued' | 'paid' | 'overdue';
 export type BlogStatus = 'draft' | 'published' | 'archived';
 export type BlogPostType = 'journal' | 'rednote' | 'facebook' | 'youtube' | 'instagram';
 
