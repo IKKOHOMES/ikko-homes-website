@@ -7,6 +7,17 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 type DocumentType = 'quote' | 'invoice';
 type Action = 'download' | 'email';
 type Payload = { action?: unknown; document_type?: unknown; document_id?: unknown };
+type DocumentDeliveryInsert = {
+  order_id: string;
+  quote_id: string | null;
+  invoice_id: string | null;
+  document_type: DocumentType;
+  recipient_email: string;
+  sent_at: string | null;
+  provider_message_id: string | null;
+  outcome: 'sent' | 'failed';
+  error_message: string | null;
+};
 
 const asRecord = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
 const asString = (value: unknown) => typeof value === 'string' ? value : '';
@@ -66,7 +77,7 @@ async function loadInvoicePdfInput(admin: SupabaseClient, invoiceId: string): Pr
 }
 
 async function logDelivery(admin: SupabaseClient, input: { documentType: DocumentType; documentId: string; orderId: string; recipientEmail: string; outcome: 'sent' | 'failed'; providerMessageId?: string | null; errorMessage?: string | null }) {
-  const payload = input.documentType === 'quote'
+  const payload: DocumentDeliveryInsert = input.documentType === 'quote'
     ? { order_id: input.orderId, quote_id: input.documentId, invoice_id: null, document_type: 'quote', recipient_email: input.recipientEmail, sent_at: input.outcome === 'sent' ? new Date().toISOString() : null, provider_message_id: input.providerMessageId ?? null, outcome: input.outcome, error_message: input.errorMessage ?? null }
     : { order_id: input.orderId, quote_id: null, invoice_id: input.documentId, document_type: 'invoice', recipient_email: input.recipientEmail, sent_at: input.outcome === 'sent' ? new Date().toISOString() : null, provider_message_id: input.providerMessageId ?? null, outcome: input.outcome, error_message: input.errorMessage ?? null };
   await admin.from('order_document_deliveries').insert(payload);

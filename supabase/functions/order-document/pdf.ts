@@ -75,7 +75,7 @@ export async function buildOrderPdf(input: OrderPdfInput): Promise<{ bytes: Uint
   page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: cream });
   const logoScale = Math.min(112 / logo.width, 39 / logo.height);
   page.drawImage(logo, { x: MARGIN, y: PAGE_HEIGHT - 79, width: logo.width * logoScale, height: logo.height * logoScale });
-  page.drawText('INTERIORS, FURNITURE AND JOINERY', { x: MARGIN, y: PAGE_HEIGHT - 88, size: 6.5, font: bold, color: orange, characterSpacing: 1.1 });
+  page.drawText('INTERIORS, FURNITURE AND JOINERY', { x: MARGIN, y: PAGE_HEIGHT - 88, size: 6.5, font: bold, color: orange });
   const titleWidth = serif.widthOfTextAtSize(documentTitle, 31);
   page.drawText(documentTitle, { x: PAGE_WIDTH - MARGIN - titleWidth, y: PAGE_HEIGHT - 63, size: 31, font: serif, color: charcoal });
   const referenceWidth = bold.widthOfTextAtSize(input.reference, 9);
@@ -83,7 +83,7 @@ export async function buildOrderPdf(input: OrderPdfInput): Promise<{ bytes: Uint
   page.drawLine({ start: { x: MARGIN, y: PAGE_HEIGHT - 98 }, end: { x: PAGE_WIDTH - MARGIN, y: PAGE_HEIGHT - 98 }, thickness: 1, color: orange });
 
   let customerY = PAGE_HEIGHT - 129;
-  page.drawText('BILL TO', { x: MARGIN, y: customerY, size: 8, font: bold, color: orange, characterSpacing: 0.8 });
+  page.drawText('BILL TO', { x: MARGIN, y: customerY, size: 8, font: bold, color: orange });
   customerY -= 18;
   customerY = drawWrapped(page, input.customer.name, { x: MARGIN, y: customerY, width: 230, size: 11, font: bold });
   customerY = drawWrapped(page, input.customer.address, { x: MARGIN, y: customerY - 2, width: 230, size: 9, font: sans, color: muted });
@@ -113,16 +113,16 @@ export async function buildOrderPdf(input: OrderPdfInput): Promise<{ bytes: Uint
   summaryCells.forEach((cell, index) => {
     const x = MARGIN + index * cellWidth;
     page.drawRectangle({ x, y: summaryY - 53, width: cellWidth - (index === summaryCells.length - 1 ? 0 : 1), height: 53, color: cell.color });
-    page.drawText(cell.label, { x: x + 11, y: summaryY - 18, size: 6.5, font: bold, color: white, characterSpacing: 0.8 });
+    page.drawText(cell.label, { x: x + 11, y: summaryY - 18, size: 6.5, font: bold, color: white });
     page.drawText(cell.value, { x: x + 11, y: summaryY - 38, size: index === 2 ? 16 : 11, font: bold, color: white });
   });
 
   let y = summaryY - 84;
   const columns = { description: MARGIN, quantity: 345, price: 412, total: 505 };
-  page.drawText('DESCRIPTION', { x: columns.description, y, size: 7.5, font: bold, color: orange, characterSpacing: 0.7 });
-  page.drawText('QTY', { x: columns.quantity, y, size: 7.5, font: bold, color: orange, characterSpacing: 0.7 });
-  page.drawText('UNIT PRICE', { x: columns.price, y, size: 7.5, font: bold, color: orange, characterSpacing: 0.7 });
-  page.drawText('AMOUNT', { x: columns.total, y, size: 7.5, font: bold, color: orange, characterSpacing: 0.7 });
+  page.drawText('DESCRIPTION', { x: columns.description, y, size: 7.5, font: bold, color: orange });
+  page.drawText('QTY', { x: columns.quantity, y, size: 7.5, font: bold, color: orange });
+  page.drawText('UNIT PRICE', { x: columns.price, y, size: 7.5, font: bold, color: orange });
+  page.drawText('AMOUNT', { x: columns.total, y, size: 7.5, font: bold, color: orange });
   y -= 10;
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_WIDTH - MARGIN, y }, thickness: 0.7, color: muted });
   y -= 18;
@@ -144,7 +144,7 @@ export async function buildOrderPdf(input: OrderPdfInput): Promise<{ bytes: Uint
   y -= 34;
 
   if (isQuote && input.paymentPlan?.length) {
-    page.drawText('PROPOSED PAYMENT PLAN', { x: MARGIN, y, size: 7.5, font: bold, color: orange, characterSpacing: 0.8 });
+    page.drawText('PROPOSED PAYMENT PLAN', { x: MARGIN, y, size: 7.5, font: bold, color: orange });
     y -= 16;
     input.paymentPlan.slice(0, 5).forEach((instalment) => {
       page.drawText(instalment.label, { x: MARGIN, y, size: 9, font: sans, color: charcoal });
