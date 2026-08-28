@@ -53,6 +53,21 @@ test('submits an order with the isolated customer session', async () => {
   expect(publicFunctionsInvoke).not.toHaveBeenCalled();
 });
 
+test('submits the durable product ID alongside the product slug', async () => {
+  customerFunctionsInvoke.mockClear();
+  await submitOrder([{
+    id: 'line-product-id', kind: 'furniture', productId: '5c274229-5318-401b-b4e2-1a15c10a605e', productSlug: 'renamed-chair',
+    name: 'Renamed Chair', price: 1290, quantity: 1, finish: 'Natural Oak', imageTone: 'oak',
+  }], {
+    firstName: 'Ari', lastName: 'Lee', email: 'ari@example.com', phone: '0400000000', address: '69 Patricia Loop', note: '',
+  });
+
+  const invocations = customerFunctionsInvoke.mock.calls as unknown as Array<[string, { body: FormData }]>;
+  const invocation = invocations.at(-1)?.[1] as { body: FormData };
+  const payload = JSON.parse(String(invocation.body.get('payload')));
+  expect(payload.lines[0]).toMatchObject({ productId: '5c274229-5318-401b-b4e2-1a15c10a605e', slug: 'renamed-chair' });
+});
+
 test('submits the selected cabinetry product name and range identity', async () => {
   customerFunctionsInvoke.mockClear();
   const upload = new File(['drawing'], 'kitchen.pdf', { type: 'application/pdf' });

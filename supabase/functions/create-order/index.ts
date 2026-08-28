@@ -10,7 +10,7 @@ const maxDrawingSize = 25 * 1024 * 1024;
 const allowedDrawing = /\.(pdf|dwg|jpe?g|png)$/i;
 
 type CustomerPayload = { firstName: unknown; lastName: unknown; email: unknown; phone: unknown; address: unknown; note?: unknown };
-type FurnitureLine = { id: unknown; kind: 'furniture'; slug: unknown; quantity: unknown; finish?: unknown };
+type FurnitureLine = { id: unknown; kind: 'furniture'; productId: unknown; slug: unknown; quantity: unknown; finish?: unknown };
 type CabinetryLine = { id: unknown; kind: 'cabinetry'; cabinetryProductId: unknown; rangeId: unknown; name: unknown; quantity: unknown };
 type SubmittedLine = FurnitureLine | CabinetryLine;
 
@@ -71,12 +71,12 @@ Deno.serve(async (request) => {
     const furnitureLines = lines.filter((line): line is FurnitureLine => line.kind === 'furniture');
     const cabinetryLines = lines.filter((line): line is CabinetryLine => line.kind === 'cabinetry');
     if (furnitureLines.length + cabinetryLines.length !== lines.length) throw new Error('One or more cart lines are invalid.');
-    const slugs = furnitureLines.map((line) => requiredString(line.slug, 'Product')).filter((slug, index, all) => all.indexOf(slug) === index);
-    const { data: products, error: productsError } = slugs.length
-      ? await admin.from('products').select('id, slug, name, price').eq('is_active', true).in('slug', slugs)
+    const productIds = furnitureLines.map((line) => requiredString(line.productId, 'Product')).filter((id, index, all) => all.indexOf(id) === index);
+    const { data: products, error: productsError } = productIds.length
+      ? await admin.from('products').select('id, slug, name, price').eq('is_active', true).in('id', productIds)
       : { data: [], error: null };
-    if (productsError || !products || products.length !== slugs.length) throw new Error('One or more products are no longer available.');
-    const productsBySlug = new Map(products.map((product) => [product.slug, product]));
+    if (productsError || !products || products.length !== productIds.length) throw new Error('One or more products are no longer available.');
+    const productsById = new Map(products.map((product) => [product.id, product]));
 
     const verifiedCabinetry = new Map<string, { displayName: string }>();
     for (const line of cabinetryLines) {
@@ -117,7 +117,7 @@ Deno.serve(async (request) => {
 
     const discountPercent = signedInUser && customer.auth_user_id === signedInUser.id ? Number(customer.discount_percent) : 0;
     const pricedFurnitureLines = furnitureLines.map((line) => {
-      const product = productsBySlug.get(requiredString(line.slug, 'Product'));
+      const product = productsById.get(requiredString(line.productId, 'Product'));
       if (!product) throw new Error('One or more products are no longer available.');
       const finish = typeof line.finish === 'string' && line.finish.trim() ? line.finish.trim() : null;
       const price = calculateFurniturePrice(Number(product.price), discountPercent, line.quantity as number);
