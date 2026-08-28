@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { calculateFurniturePrice } from './pricing.ts';
+import { resolveFurnitureProducts } from './product-resolution.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -27,9 +28,6 @@ function optionalString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
 
 function parsePayload(value: FormDataEntryValue | null) {
   if (typeof value !== 'string') throw new Error('Order details are required.');
@@ -79,19 +77,14 @@ Deno.serve(async (request) => {
     const furnitureLines = lines.filter((line): line is FurnitureLine => line.kind === 'furniture');
     const cabinetryLines = lines.filter((line): line is CabinetryLine => line.kind === 'cabinetry');
     if (furnitureLines.length + cabinetryLines.length !== lines.length) throw new Error('One or more cart lines are invalid.');
-    const productIds = furnitureLines.map((line) => optionalString(line.productId)).filter((id): id is string => Boolean(id && isUuid(id))).filter((id, index, all) => all.indexOf(id) === index);
-    const productSlugs = furnitureLines.map((line) => optionalString(line.slug)).filter((slug): slug is string => Boolean(slug)).filter((slug, index, all) => all.indexOf(slug) === index);
-    const productNames = furnitureLines.map((line) => optionalString(line.name)).filter((name): name is string => Boolean(name)).filter((name, index, all) => all.indexOf(name) === index);
-    const [productsByIdResult, productsBySlugResult, productsByNameResult] = await Promise.all([
-      productIds.length ? admin.from('products').select('id, slug, name, price').eq('is_active', true).in('id', productIds) : { data: [], error: null },
-      productSlugs.length ? admin.from('products').select('id, slug, name, price').eq('is_active', true).in('slug', productSlugs) : { data: [], error: null },
-      productNames.length ? admin.from('products').select('id, slug, name, price').eq('is_active', true).in('name', productNames) : { data: [], error: null },
-    ]);
-    if (productsByIdResult.error || productsBySlugResult.error || productsByNameResult.error) throw new Error('Unable to verify the products in your cart.');
-    const productsById = new Map((productsByIdResult.data ?? []).map((product) => [product.id, product]));
-    const productsBySlug = new Map((productsBySlugResult.data ?? []).map((product) => [product.slug, product]));
-    const productsByName = new Map<string, Array<{ id: string; slug: string; name: string; price: number | string }>>();
-    for (const product of productsByNameResult.data ?? []) productsByName.set(product.name, [...(productsByName.get(product.name) ?? []), product]);
+    const resolvedFurnitureProducts = await resolveFurnitureProducts(furnitureLines, async (field, values) => {
+      const { data, error } = await admin.from('products')
+        .select('id, slug, name, price')
+        .eq('is_active', true)
+        .in(field, values);
+      if (error) throw new Error('Unable to verify the products in your cart.');
+      return data ?? [];
+    });
 
     const verifiedCabinetry = new Map<string, { displayName: string }>();
     for (const line of cabinetryLines) {
@@ -131,14 +124,8 @@ Deno.serve(async (request) => {
     if (customerError || !customer) throw new Error('Unable to save customer details.');
 
     const discountPercent = signedInUser && customer.auth_user_id === signedInUser.id ? Number(customer.discount_percent) : 0;
-    const pricedFurnitureLines = furnitureLines.map((line) => {
-      const productId = optionalString(line.productId);
-      const productSlug = optionalString(line.slug);
-      const productName = optionalString(line.name);
-      const nameMatches = productName ? productsByName.get(productName) ?? [] : [];
-      const product = (productId && isUuid(productId) ? productsById.get(productId) : undefined)
-        ?? (productSlug ? productsBySlug.get(productSlug) : undefined)
-        ?? (nameMatches.length === 1 ? nameMatches[0] : undefined);
+    const pricedFurnitureLines = furnitureLines.map((line, index) => {
+      const product = resolvedFurnitureProducts[index];
       if (!product) throw new Error('One or more products are no longer available.');
       const finish = typeof line.finish === 'string' && line.finish.trim() ? line.finish.trim() : null;
       const price = calculateFurniturePrice(Number(product.price), discountPercent, line.quantity as number);
