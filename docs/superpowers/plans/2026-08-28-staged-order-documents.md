@@ -182,25 +182,25 @@ git commit -m "feat: add staged order document schema"
 
 **Interfaces:**
 - `create-order` returns `{ order_number: string, document_kind: 'quote-pending', discount_percent: number, furniture_discount_total: number }` for every successful order.
-- `createCheckoutQuote(admin, orderId, furnitureLines, cabinetryLines): Promise<void>` inserts Quote v1 and its quote lines.
+- `createCheckoutQuote(repository: QuoteRepository, orderId, furnitureLines, cabinetryLines): Promise<void>` inserts Quote v1 and its quote lines.
+- `QuoteRepository` exposes `insertQuote(input): Promise<{ id: string }>` and `insertQuoteLines(lines): Promise<void>`; the Edge Function adapts the Supabase client to this interface.
 
 - [ ] **Step 1: Write a failing checkout quote test**
 
 ```ts
 Deno.test('creates quote v1 for a furniture-only order instead of an invoice', async () => {
-  const inserts: Array<{ table: string; values: unknown }> = [];
-  const admin = fakeAdminRecording(inserts);
-  await createCheckoutQuote(admin, 'order-1', [
+  let quote: Record<string, unknown> | null = null;
+  let lines: Array<Record<string, unknown>> = [];
+  const repository = {
+    insertQuote: async (input: Record<string, unknown>) => { quote = input; return { id: 'quote-1' }; },
+    insertQuoteLines: async (input: Array<Record<string, unknown>>) => { lines = input; },
+  };
+  await createCheckoutQuote(repository, 'order-1', [
     { displayName: 'Japanese Modern Sofa 041', unitPrice: 3290, quantity: 1, finish: 'Natural oak' },
   ], []);
-  expect(inserts).toContainEqual({
-    table: 'quotes',
-    values: expect.objectContaining({ order_id: 'order-1', version: 1, status: 'draft', total: 3290 }),
-  });
-  expect(inserts).toContainEqual({
-    table: 'quote_lines',
-    values: expect.objectContaining({ display_name: 'Japanese Modern Sofa 041', is_tbd: false }),
-  });
+  assertEquals(quote, { order_id: 'order-1', version: 1, status: 'draft', total: 3290 });
+  assertEquals(lines[0]?.display_name, 'Japanese Modern Sofa 041');
+  assertEquals(lines[0]?.is_tbd, false);
 });
 ```
 
@@ -404,17 +404,27 @@ git commit -m "feat: add staged payment plans"
 **Interfaces:**
 - `admin-invoice` accepts `{ order_id: string }` and returns `{ invoices: Array<{ id: string; invoice_number: string; instalment_id: string }> }`.
 - `markInvoicePaid(invoiceId: string, paidAt: string, note: string): Promise<void>`.
-- `issuePaymentPlanInvoices(orderId): Promise<GeneratedInvoice[]>`.
+- `issuePaymentPlanInvoices(repository: InvoiceRepository, orderId: string): Promise<GeneratedInvoice[]>`, where `InvoiceRepository` supplies confirmed quote, draft instalments, invoice number reservation, and inserts.
 
 - [ ] **Step 1: Write the failing Edge Function test**
 
 ```ts
 Deno.test('issues one invoice for each draft instalment', async () => {
-  const result = await issuePaymentPlanInvoices(fakeAdminWithConfirmedQuoteAndPlan([
-    { id: 'plan-1', label: 'Deposit', amount: 500, due_on: '2026-09-01' },
-    { id: 'plan-2', label: 'Balance', amount: 500, due_on: '2026-10-01' },
-  ]), 'order-1');
-  assertEquals(result.map((invoice) => invoice.total), [500, 500]);
+  const inserted: Array<{ total: number; payment_plan_instalment_id: string }> = [];
+  let sequence = 1000;
+  const repository = {
+    getConfirmedQuote: async () => ({ id: 'quote-1', total: 1000, has_tbd_lines: false }),
+    getDraftInstalments: async () => [
+      { id: 'plan-1', label: 'Deposit', amount: 500, due_on: '2026-09-01' },
+      { id: 'plan-2', label: 'Balance', amount: 500, due_on: '2026-10-01' },
+    ],
+    reserveInvoiceNumber: async () => `IKKO-${++sequence}`,
+    insertInvoice: async (invoice: { total: number; payment_plan_instalment_id: string }) => { inserted.push(invoice); return { id: crypto.randomUUID() }; },
+    insertInvoiceLine: async () => undefined,
+    markInstalmentIssued: async () => undefined,
+  };
+  await issuePaymentPlanInvoices(repository, 'order-1');
+  assertEquals(inserted.map((invoice) => invoice.total), [500, 500]);
 });
 ```
 
@@ -484,7 +494,9 @@ git commit -m "feat: issue and track instalment invoices"
 Deno.test('names an invoice PDF using its invoice number', async () => {
   const result = await buildOrderPdf({
     documentType: 'invoice', reference: 'IKKO-1001', issueDate: '2026-08-28',
-    dueDate: '2026-09-15', customer: customerFixture, lines: invoiceLinesFixture,
+    dueDate: '2026-09-15',
+    customer: { name: 'Zebin Hu', email: 'client@example.com', address: '69 Patricia Loop' },
+    lines: [{ displayName: 'Deposit — ORD-1001', quantity: 1, unitPrice: 500, total: 500 }],
     total: 500, paymentPlan: [],
   });
   assertEquals(result.filename, 'IKKO-HOMES-IKKO-1001.pdf');
