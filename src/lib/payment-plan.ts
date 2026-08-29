@@ -30,7 +30,9 @@ export function calculateQuoteTotals(lines: QuoteLine[], discountTotal: number) 
 
 export function updateSchedulePercent(lines: PaymentPlanDraft[], index: number, percentage: number, quoteTotal: number): PaymentPlanDraft[] {
   requireScheduleEdit(lines, index, percentage, quoteTotal);
-  const next = lines.map((line, lineIndex) => lineIndex === index ? { ...line, percentage, amount: fromCents(Math.round(toCents(quoteTotal) * percentage / 100)) } : { ...line });
+  const amountCents = Math.round(toCents(quoteTotal) * percentage / 100);
+  const canonicalPercentage = roundPercentage((amountCents / toCents(quoteTotal)) * 100);
+  const next = lines.map((line, lineIndex) => lineIndex === index ? { ...line, percentage: canonicalPercentage, amount: fromCents(amountCents) } : { ...line });
   return balanceFinalLine(next, index, quoteTotal);
 }
 
@@ -43,7 +45,8 @@ export function updateScheduleAmount(lines: PaymentPlanDraft[], index: number, a
 
 export function validatePaymentPlan(instalments: PaymentPlanDraft[], quoteTotal: number): PaymentPlanValidation {
   if (!instalments.length) return { valid: false, message: 'Add at least one instalment.' };
-  if (instalments.some((line) => !line.label.trim() || !Number.isFinite(line.percentage) || line.percentage < 0 || !Number.isFinite(line.amount) || line.amount < 0 || !line.dueOn)) return { valid: false, message: 'Every instalment needs a name, percentage, amount and due date.' };
+  if (instalments.some((line) => !line.label.trim() || !Number.isFinite(line.percentage) || line.percentage <= 0 || !Number.isFinite(line.amount) || line.amount <= 0 || !line.dueOn)) return { valid: false, message: 'Every instalment needs a name, percentage, amount and due date.' };
+  if (Math.abs(instalments.reduce((sum, line) => sum + toCents(line.percentage), 0) - 10000) > 1) return { valid: false, message: 'Instalment percentages must total 100%.' };
   return hasExactTotal(instalments.map((line) => line.amount), quoteTotal)
     ? { valid: true }
     : { valid: false, message: `Instalments must total $${quoteTotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.` };

@@ -17,9 +17,26 @@
 
 ## Commit
 
-d211d97 feat: calculate GST and payment percentages
+5f30be8 feat: calculate GST and payment percentages
 
 ## Concerns
 
 No remote database writes were performed. The full-suite failures are environment-related and preclude a green full-suite result in this worktree.
+
+
+## Review follow-up
+
+- Tightened payment-plan validation: each amount and percentage must be greater than zero; percentage cents must total 100.00% within a 0.01 percentage-point rounding tolerance, as well as amounts matching the quote exactly in cents.
+- Canonicalized percentage edits from the rounded cents amount, so a 33.333% entry on a $1,000 quote persists as 33.33% and $333.33 while the final row balances at 66.67% and $666.67.
+- Added focused regressions for zero rows, a 99% schedule, canonical 33.333% conversion, and a valid cent-balanced 100% schedule.
+
+### Review verification
+
+- `npm test -- --run src/test/payment-plan.test.ts src/test/payment-plan-editor.test.tsx` — 10 passed.
+- `npm run build` — passed (existing Vite warnings only).
+
+### Review commit
+
+fix: validate payment schedule percentages (recorded in Git history)
+
 
