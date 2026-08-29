@@ -15,8 +15,7 @@ export async function synchroniseInvoiceDrafts(orderId: string) {
   if (error) throw new Error('Unable to synchronise invoice drafts.');
   return normaliseInvoiceResponse(data);
 }
-export async function issueInvoice(orderId: string, invoiceId?: string) {
-  if (!invoiceId) throw new Error('Unable to issue the invoice.');
+export async function issueInvoice(orderId: string, invoiceId: string) {
   const { data, error } = await getAdminSupabaseClient().functions.invoke('admin-invoice', { body: { action: 'issue', order_id: orderId, invoice_id: invoiceId } });
   if (error) throw new Error('Unable to issue the invoice.');
   return normaliseInvoiceResponse(data);

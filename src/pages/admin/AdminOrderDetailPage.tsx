@@ -5,7 +5,7 @@ import { QuoteEditor } from '../../components/admin/QuoteEditor';
 import { PaymentPlanEditor } from '../../components/admin/PaymentPlanEditor';
 import { StatusBadge } from '../../components/admin/StatusBadge';
 import { confirmQuote, getAdminOrder, markInvoicePaid, savePaymentPlan, saveQuote, type AdminOrderDetail } from '../../lib/admin-api';
-import { issueInvoice } from '../../lib/admin-invoice';
+import { synchroniseInvoiceDrafts } from '../../lib/admin-invoice';
 
 export function AdminOrderDetailPage() {
   const { id = '' } = useParams(); const [detail, setDetail] = useState<AdminOrderDetail | null>(null); const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [invoiceError, setInvoiceError] = useState(''); const [working, setWorking] = useState(false);
@@ -14,7 +14,7 @@ export function AdminOrderDetailPage() {
   if (loading) return <section className="admin-dashboard"><p className="admin-empty">Loading order…</p></section>;
   if (error || !detail) return <section className="admin-dashboard"><p className="error" role="alert">{error || 'Unable to load the order.'}</p></section>;
   const latestQuote = detail.quotes[0];
-  const generateInvoices = async () => { setWorking(true); setInvoiceError(''); try { await issueInvoice(detail.order.id); load(); } catch { setInvoiceError('Unable to generate the instalment invoices.'); } finally { setWorking(false); } };
+  const generateInvoices = async () => { setWorking(true); setInvoiceError(''); try { await synchroniseInvoiceDrafts(detail.order.id); load(); } catch { setInvoiceError('Unable to generate the instalment invoices.'); } finally { setWorking(false); } };
   const markPaid = async (invoiceId: string) => { setWorking(true); setInvoiceError(''); try { await markInvoicePaid(invoiceId, new Date().toISOString(), ''); load(); } catch { setInvoiceError('Unable to record the payment.'); } finally { setWorking(false); } };
   return <section className="admin-dashboard admin-order-detail"><Link className="admin-back" to="/admin/orders">← Back to orders</Link><div className="admin-page-heading"><div><p className="eyebrow">Order {detail.order.number}</p><h1>{detail.order.customerName}</h1></div><StatusBadge status={detail.order.status} /></div>
     <div className="admin-info-grid"><section><h2>Customer</h2><p>{detail.customer.email}<br />{detail.customer.phone}<br />{detail.customer.address}</p></section><section><h2>Internal note</h2><p>{detail.internalNote || 'No customer note provided.'}</p></section><section><h2>Order value</h2><p>{detail.order.total === null ? 'T.B.D.' : `$${detail.order.total.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}</p></section></div>

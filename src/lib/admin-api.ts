@@ -146,15 +146,9 @@ export async function savePaymentPlan(orderId: string, quoteId: string, instalme
   if (quoteError || !quote || quote.status !== 'confirmed') throw new Error('A confirmed quote is required.');
   const validation = validatePaymentPlan(instalments, Number(quote.total));
   if (!validation.valid) throw new Error(validation.message);
-  const { data: issued, error: issuedError } = await client.from('payment_plan_instalments').select('id').eq('order_id', orderId).neq('status', 'draft').limit(1);
-  if (issuedError) throw new Error('Unable to save the payment plan.');
-  if (issued?.length) throw new Error('Issued instalments cannot be changed.');
-  const { error: deleteError } = await client.from('payment_plan_instalments').delete().eq('order_id', orderId).eq('quote_id', quoteId).eq('status', 'draft');
-  if (deleteError) throw new Error('Unable to save the payment plan.');
-  const { error: insertError } = await client.from('payment_plan_instalments').insert(instalments.map((line, sequence) => ({ order_id: orderId, quote_id: quoteId, sequence: sequence + 1, label: line.label.trim(), amount: line.amount, due_on: line.dueOn, percentage: line.percentage, internal_note: line.internalNote.trim(), status: 'draft' })));
-  if (insertError) throw new Error('Unable to save the payment plan.');
-}
-export async function markInvoicePaid(invoiceId: string, paidAt: string, internalNote: string): Promise<void> {
+  const { error } = await client.rpc('replace_payment_plan_and_sync_invoices', { p_order_id: orderId, p_quote_id: quoteId, p_instalments: instalments });
+  if (error) throw new Error(error.message === 'Issued instalments cannot be changed.' ? error.message : 'Unable to save the payment plan.');
+}export async function markInvoicePaid(invoiceId: string, paidAt: string, internalNote: string): Promise<void> {
   const client = getAdminSupabaseClient();
   const { data: invoice, error: invoiceError } = await client.from('invoices').update({ status: 'paid', paid_at: paidAt }).eq('id', invoiceId).eq('status', 'issued').select('id, order_id, invoice_number, payment_plan_instalment_id').single();
   if (invoiceError || !invoice || !invoice.payment_plan_instalment_id) throw new Error('Unable to mark the invoice as paid.');
