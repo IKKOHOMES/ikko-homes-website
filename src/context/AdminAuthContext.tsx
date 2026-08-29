@@ -25,9 +25,9 @@ export function AdminAuthProvider({ children }: PropsWithChildren) {
       if (!active) return;
       if (!nextSession) { setIsAdmin(false); setLoading(false); return; }
       setLoading(true);
-      const { data, error } = await client.from('profiles').select('id').eq('id', nextSession.user.id).maybeSingle();
+      const { data, error } = await client.from('profiles').select('role').eq('id', nextSession.user.id).maybeSingle();
       if (!active) return;
-      if (!data || error) {
+      if (!data || error || data.role !== 'admin') {
         setSession(null); setIsAdmin(false); setAccessError('Incorrect email or password.'); setLoading(false);
         void client.auth.signOut({ scope: 'local' });
         return;

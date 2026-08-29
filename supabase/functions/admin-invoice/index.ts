@@ -22,8 +22,23 @@ export type InvoiceRepository = {
   deleteDraftInvoice(invoiceId: string): Promise<void>;
 };
 const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
-export function isInvoiceAdministrator(profile: unknown, isServiceRole = false): boolean {
-  return isServiceRole || (typeof profile === 'object' && profile !== null && (profile as { role?: unknown }).role === 'admin');
+export function isInvoiceAdministrator(profile: unknown): boolean {
+  return typeof profile === 'object' && profile !== null && (profile as { role?: unknown }).role === 'admin';
+}
+export async function authoriseInvoiceRequest(
+  token: string,
+  serviceRoleKey: string,
+  authenticateUser: (token: string) => Promise<{ id: string } | null>,
+  loadProfile: (userId: string) => Promise<unknown>,
+): Promise<boolean> {
+  if (!token || !serviceRoleKey) return false;
+  if (token === serviceRoleKey) return true;
+  try {
+    const user = await authenticateUser(token);
+    return Boolean(user && isInvoiceAdministrator(await loadProfile(user.id)));
+  } catch {
+    return false;
+  }
 }
 
 export async function synchronisePaymentPlanInvoices(repository: InvoiceRepository, orderId: string): Promise<GeneratedInvoice[]> {
@@ -70,10 +85,15 @@ if (import.meta.main) Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
   const supabaseUrl = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'); const authorization = request.headers.get('Authorization');
   if (!supabaseUrl || !anonKey || !serviceRoleKey || !authorization) return json({ error: 'Unauthorised.' }, 401);
-  const token = authorization.replace(/^Bearer\s+/i, ''); const auth = createClient(supabaseUrl, anonKey, { auth: { autoRefreshToken: false, persistSession: false } }); const { data: userData, error: userError } = await auth.auth.getUser(token);
-  if (userError || !userData.user) return json({ error: 'Unauthorised.' }, 401);
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } }); const { data: profile, error: profileError } = await admin.from('profiles').select('role').eq('id', userData.user.id).maybeSingle();
-  if (profileError || !isInvoiceAdministrator(profile)) return json({ error: 'Unauthorised.' }, 403);
+  const token = authorization.replace(/^Bearer\s+/i, ''); const auth = createClient(supabaseUrl, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const authorised = await authoriseInvoiceRequest(
+    token,
+    serviceRoleKey,
+    async (candidate) => { const { data, error } = await auth.auth.getUser(candidate); return error || !data.user ? null : { id: data.user.id }; },
+    async (userId) => { const { data, error } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle(); return error ? null : data; },
+  );
+  if (!authorised) return json({ error: 'Unauthorised.' }, 403);
   try {
     const payload = await request.json() as { action?: unknown; order_id?: unknown; invoice_id?: unknown };
     if ((payload.action !== 'sync' && payload.action !== 'issue') || typeof payload.order_id !== 'string' || !payload.order_id) throw new Error('Order and action are required.');

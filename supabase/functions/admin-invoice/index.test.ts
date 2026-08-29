@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { isInvoiceAdministrator, synchronisePaymentPlanInvoices } from './index.ts';
+import { authoriseInvoiceRequest, isInvoiceAdministrator, synchronisePaymentPlanInvoices } from './index.ts';
 
 type StoredInvoice = { id: string; invoice_number: string; instalment_id: string; total: number; due_on: string; status: 'draft' | 'issued' | 'paid' };
 
@@ -77,7 +77,17 @@ Deno.test('denies an authenticated customer profile from managing invoices', () 
   assertEquals(isInvoiceAdministrator({}), false);
 });
 
-Deno.test('accepts an administrator profile and the service role', () => {
+Deno.test('accepts an administrator profile', () => {
   assertEquals(isInvoiceAdministrator({ role: 'admin' }), true);
-  assertEquals(isInvoiceAdministrator(null, true), true);
+});
+Deno.test('authorises only an admin user or the configured service key at the request boundary', async () => {
+  let authenticated = 0;
+  const authenticate = async () => { authenticated += 1; return { id: 'user-1' }; };
+  const customerProfile = async () => ({ role: 'customer' });
+  const adminProfile = async () => ({ role: 'admin' });
+
+  assertEquals(await authoriseInvoiceRequest('user-token', 'server-only-service-key', authenticate, customerProfile), false);
+  assertEquals(await authoriseInvoiceRequest('user-token', 'server-only-service-key', authenticate, adminProfile), true);
+  assertEquals(await authoriseInvoiceRequest('server-only-service-key', 'server-only-service-key', authenticate, customerProfile), true);
+  assertEquals(authenticated, 2);
 });

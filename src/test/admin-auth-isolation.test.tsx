@@ -9,14 +9,14 @@ const adminClient = {
     signInWithPassword: vi.fn(),
     signOut: vi.fn(async () => ({ error: null })),
   },
-  from: vi.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) })),
+  from: vi.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'customer' }, error: null }) }) }) })),
 };
 const publicClient = {
   auth: {
     getSession: async () => ({ data: { session: { user: { id: 'customer-user-1' } } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: vi.fn() } } }),
   },
-  from: vi.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) })),
+  from: vi.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'customer' }, error: null }) }) }) })),
 };
 
 vi.mock('../lib/supabase', () => ({
