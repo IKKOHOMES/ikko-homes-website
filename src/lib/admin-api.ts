@@ -3,12 +3,12 @@ import { compressPublicImage } from './image-compression';
 import type { AdminCustomer, AdminOrder, BlogPost, BlogStatus, InvoiceStatus, ManagedCabinetryImage, ManagedCabinetryProduct, ManagedHomeContent, ManagedHomeThemeBlock, ManagedPaletteItem, ManagedProduct, ManagedProductCategory, ManagedProject, ManagedServicePillar, ManagedStyleRange, OrderStatus, ProductColour } from '../types/domain';
 import { loadExistingSampleAssets, loadExistingSampleRecords } from './sample-content';
 import { normaliseProductDetailContent, type ProductDetailContent } from '../types/product-detail-content';
-import { validatePaymentPlan, type PaymentPlanDraft } from './payment-plan';
+import { calculateQuoteTotals, validatePaymentPlan, type PaymentPlanDraft } from './payment-plan';
 
 export type PaymentPlanInstalment = PaymentPlanDraft & { id: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; paidAt: string | null };
 export type EditableQuoteLine = { id?: string; displayName: string; unitPrice: number; quantity: number; isTbd: boolean };
-export type QuoteSaveInput = { quoteId: string; orderId: string; expiresOn: string; internalNote: string; lines: EditableQuoteLine[] };
-export type EditableQuote = { id: string; orderId: string; version: number; status: 'draft' | 'confirmed'; total: number; expiresOn: string; internalNote: string; createdAt?: string; lines: EditableQuoteLine[] };
+export type QuoteSaveInput = { quoteId: string; orderId: string; expiresOn: string; internalNote: string; discountTotal?: number; lines: EditableQuoteLine[] };
+export type EditableQuote = { id: string; orderId: string; version: number; status: 'draft' | 'confirmed'; subtotal?: number; discountTotal?: number; gstTotal?: number; total: number; expiresOn: string; internalNote: string; createdAt?: string; lines: EditableQuoteLine[] };
 export type AdminOrderDetail = {
   order: AdminOrder;
   customer: { email: string; phone: string; address: string };
@@ -57,14 +57,14 @@ type DetailRow = Omit<OrderRow, 'customers' | 'order_lines' | 'quotes' | 'invoic
   internal_note: string;
   customers: { id: string; first_name: string; last_name: string; email: string; phone: string; address: string } | null;
   order_lines: Array<{ id: string; line_kind: 'furniture' | 'cabinetry'; display_name: string; unit_price: number | string | null; quantity: number; finish: string | null; cabinetry_drawings: Array<{ storage_path: string; file_name: string }> }>;
-  quotes: Array<{ id: string; version: number; status: 'draft' | 'confirmed'; total: number | string; expires_on: string; internal_note: string; created_at: string; quote_lines: Array<{ id: string; display_name: string; unit_price: number | string; quantity: number; is_tbd: boolean }> }> ;
+  quotes: Array<{ id: string; version: number; status: 'draft' | 'confirmed'; quote_number: string | null; subtotal: number | string | null; discount_total: number | string | null; gst_total: number | string | null; total: number | string; expires_on: string; internal_note: string; created_at: string; quote_lines: Array<{ id: string; display_name: string; unit_price: number | string; quantity: number; is_tbd: boolean }> }> ;
   invoices: Array<{ id: string; invoice_number: string; total: number | string; status: InvoiceStatus; due_on: string | null; paid_at: string | null }>;
-  payment_plan_instalments: Array<{ id: string; sequence: number; label: string; amount: number | string; due_on: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; internal_note: string; paid_at: string | null }>;
+  payment_plan_instalments: Array<{ id: string; sequence: number; label: string; percentage: number | string | null; amount: number | string; due_on: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; internal_note: string; paid_at: string | null }>;
 };
 
 export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
   const client = getAdminSupabaseClient();
-  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(id, invoice_number, total, status, due_on, paid_at), quotes(id, version, status, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd)), payment_plan_instalments(id, sequence, label, amount, due_on, status, internal_note, paid_at)').eq('id', id).single();
+  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(id, invoice_number, total, status, due_on, paid_at), quotes(id, version, status, quote_number, subtotal, discount_total, gst_total, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd)), payment_plan_instalments(id, sequence, label, percentage, amount, due_on, status, internal_note, paid_at)').eq('id', id).single();
   if (error || !data) throw new Error('Unable to load the order.');
   const row = data as unknown as DetailRow;
   const order = mapAdminOrderRow(row);
@@ -80,8 +80,8 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
     lines: row.order_lines.map((line) => ({ id: line.id, name: line.display_name, kind: line.line_kind, unitPrice: line.unit_price === null ? null : Number(line.unit_price), quantity: line.quantity, finish: line.finish })),
     drawings,
     invoices: (row.invoices ?? []).map((invoice) => ({ id: invoice.id, number: invoice.invoice_number, total: Number(invoice.total), status: invoice.status, dueOn: invoice.due_on, paidAt: invoice.paid_at })),
-    paymentPlan: (row.payment_plan_instalments ?? []).sort((a, b) => a.sequence - b.sequence).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount), dueOn: line.due_on, status: line.status, internalNote: line.internal_note, paidAt: line.paid_at })),
-    quotes: row.quotes.map((quote) => ({ id: quote.id, orderId: row.id, version: quote.version, status: quote.status, total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at, lines: (quote.quote_lines ?? []).map((line) => ({ id: line.id, displayName: line.display_name, unitPrice: Number(line.unit_price), quantity: line.quantity, isTbd: line.is_tbd })) })).sort((a, b) => b.version - a.version),
+    paymentPlan: (row.payment_plan_instalments ?? []).sort((a, b) => a.sequence - b.sequence).map((line) => ({ id: line.id, label: line.label, percentage: line.percentage === null ? 0 : Number(line.percentage), amount: Number(line.amount), dueOn: line.due_on, status: line.status, internalNote: line.internal_note, paidAt: line.paid_at })),
+    quotes: row.quotes.map((quote) => ({ id: quote.id, orderId: row.id, version: quote.version, status: quote.status, subtotal: quote.subtotal === null ? undefined : Number(quote.subtotal), discountTotal: quote.discount_total === null ? 0 : Number(quote.discount_total), gstTotal: quote.gst_total === null ? undefined : Number(quote.gst_total), total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at, lines: (quote.quote_lines ?? []).map((line) => ({ id: line.id, displayName: line.display_name, unitPrice: Number(line.unit_price), quantity: line.quantity, isTbd: line.is_tbd })) })).sort((a, b) => b.version - a.version),
   };
 }
 
@@ -90,9 +90,7 @@ export function quoteDisplayNameForLines(lines: Array<{ line_kind: 'furniture' |
   if (!cabinetry) throw new Error('Unable to create quotation.');
   return cabinetry.display_name;
 }
-function quoteTotal(lines: EditableQuoteLine[]) {
-  return lines.reduce((total, line) => total + (line.isTbd ? 0 : line.unitPrice * line.quantity), 0);
-}
+
 
 function validateQuoteSave(input: QuoteSaveInput) {
   if (!input.expiresOn || !input.lines.length) throw new Error('Unable to save quotation.');
@@ -102,26 +100,30 @@ function validateQuoteSave(input: QuoteSaveInput) {
 export async function saveQuote(input: QuoteSaveInput): Promise<string> {
   validateQuoteSave(input);
   const client = getAdminSupabaseClient();
-  const { data: current, error: currentError } = await client.from('quotes').select('id, version, status').eq('id', input.quoteId).eq('order_id', input.orderId).single();
+  const { data: current, error: currentError } = await client.from('quotes').select('id, version, status, quote_number').eq('id', input.quoteId).eq('order_id', input.orderId).single();
   if (currentError || !current) throw new Error('Unable to save quotation.');
-  const total = quoteTotal(input.lines);
+  const totals = calculateQuoteTotals(input.lines.filter((line) => !line.isTbd), input.discountTotal ?? 0);
   let quoteId = current.id;
   let version = current.version;
   if (current.status === 'confirmed') {
     const { data: latest, error: latestError } = await client.from('quotes').select('version').eq('order_id', input.orderId);
     if (latestError) throw new Error('Unable to save quotation.');
     version = Math.max(0, ...(latest ?? []).map((quote) => quote.version)) + 1;
-    const { data: created, error: createError } = await client.from('quotes').insert({ order_id: input.orderId, version, status: 'draft', total, expires_on: input.expiresOn, internal_note: input.internalNote }).select('id').single();
+    const { data: created, error: createError } = await client.from('quotes').insert({ order_id: input.orderId, version, status: 'draft', total: totals.total, subtotal: totals.subtotal, discount_total: totals.discountTotal, gst_total: totals.gstTotal, expires_on: input.expiresOn, internal_note: input.internalNote }).select('id').single();
     if (createError || !created) throw new Error('Unable to save quotation.');
     quoteId = created.id;
   } else {
-    const { error: updateError } = await client.from('quotes').update({ total, expires_on: input.expiresOn, internal_note: input.internalNote }).eq('id', quoteId);
+    const { error: updateError } = await client.from('quotes').update({ total: totals.total, subtotal: totals.subtotal, discount_total: totals.discountTotal, gst_total: totals.gstTotal, expires_on: input.expiresOn, internal_note: input.internalNote }).eq('id', quoteId);
     if (updateError) throw new Error('Unable to save quotation.');
     const { error: deleteError } = await client.from('quote_lines').delete().eq('quote_id', quoteId);
     if (deleteError) throw new Error('Unable to save quotation lines.');
   }
   const { error: linesError } = await client.from('quote_lines').insert(input.lines.map((line) => ({ quote_id: quoteId, display_name: line.displayName.trim(), unit_price: line.isTbd ? 0 : line.unitPrice, quantity: line.quantity, is_tbd: line.isTbd })));
   if (linesError) throw new Error('Unable to save quotation lines.');
+  if (!current.quote_number || quoteId !== current.id) {
+    const { error: numberError } = await client.rpc('ensure_quote_number', { p_quote_id: quoteId });
+    if (numberError) throw new Error('Unable to assign quotation number.');
+  }
   const { error: eventError } = await client.from('order_status_events').insert({ order_id: input.orderId, status: 'new', note: `Quotation v${version} saved.` });
   if (eventError) throw new Error('Unable to update order history.');
   return quoteId;
@@ -149,7 +151,7 @@ export async function savePaymentPlan(orderId: string, quoteId: string, instalme
   if (issued?.length) throw new Error('Issued instalments cannot be changed.');
   const { error: deleteError } = await client.from('payment_plan_instalments').delete().eq('order_id', orderId).eq('quote_id', quoteId).eq('status', 'draft');
   if (deleteError) throw new Error('Unable to save the payment plan.');
-  const { error: insertError } = await client.from('payment_plan_instalments').insert(instalments.map((line, sequence) => ({ order_id: orderId, quote_id: quoteId, sequence: sequence + 1, label: line.label.trim(), amount: line.amount, due_on: line.dueOn, internal_note: line.internalNote.trim(), status: 'draft' })));
+  const { error: insertError } = await client.from('payment_plan_instalments').insert(instalments.map((line, sequence) => ({ order_id: orderId, quote_id: quoteId, sequence: sequence + 1, label: line.label.trim(), amount: line.amount, due_on: line.dueOn, percentage: line.percentage, internal_note: line.internalNote.trim(), status: 'draft' })));
   if (insertError) throw new Error('Unable to save the payment plan.');
 }
 export async function markInvoicePaid(invoiceId: string, paidAt: string, internalNote: string): Promise<void> {
