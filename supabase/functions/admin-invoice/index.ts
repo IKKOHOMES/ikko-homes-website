@@ -22,6 +22,9 @@ export type InvoiceRepository = {
   deleteDraftInvoice(invoiceId: string): Promise<void>;
 };
 const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
+export function isInvoiceAdministrator(profile: unknown, isServiceRole = false): boolean {
+  return isServiceRole || (typeof profile === 'object' && profile !== null && (profile as { role?: unknown }).role === 'admin');
+}
 
 export async function synchronisePaymentPlanInvoices(repository: InvoiceRepository, orderId: string): Promise<GeneratedInvoice[]> {
   const quote = await repository.getConfirmedQuote(orderId);
@@ -69,8 +72,8 @@ if (import.meta.main) Deno.serve(async (request) => {
   if (!supabaseUrl || !anonKey || !serviceRoleKey || !authorization) return json({ error: 'Unauthorised.' }, 401);
   const token = authorization.replace(/^Bearer\s+/i, ''); const auth = createClient(supabaseUrl, anonKey, { auth: { autoRefreshToken: false, persistSession: false } }); const { data: userData, error: userError } = await auth.auth.getUser(token);
   if (userError || !userData.user) return json({ error: 'Unauthorised.' }, 401);
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } }); const { data: profile } = await admin.from('profiles').select('id').eq('id', userData.user.id).maybeSingle();
-  if (!profile) return json({ error: 'Unauthorised.' }, 403);
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } }); const { data: profile, error: profileError } = await admin.from('profiles').select('role').eq('id', userData.user.id).maybeSingle();
+  if (profileError || !isInvoiceAdministrator(profile)) return json({ error: 'Unauthorised.' }, 403);
   try {
     const payload = await request.json() as { action?: unknown; order_id?: unknown; invoice_id?: unknown };
     if ((payload.action !== 'sync' && payload.action !== 'issue') || typeof payload.order_id !== 'string' || !payload.order_id) throw new Error('Order and action are required.');

@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { synchronisePaymentPlanInvoices } from './index.ts';
+import { isInvoiceAdministrator, synchronisePaymentPlanInvoices } from './index.ts';
 
 type StoredInvoice = { id: string; invoice_number: string; instalment_id: string; total: number; due_on: string; status: 'draft' | 'issued' | 'paid' };
 
@@ -71,4 +71,13 @@ Deno.test('refreshes the customer snapshot when updating a draft invoice', async
   await synchronisePaymentPlanInvoices(repository, 'order-1');
 
   assertEquals((updated as { customer_name?: string }).customer_name, 'Aiko Tanaka');
+});
+Deno.test('denies an authenticated customer profile from managing invoices', () => {
+  assertEquals(isInvoiceAdministrator({ role: 'customer' }), false);
+  assertEquals(isInvoiceAdministrator({}), false);
+});
+
+Deno.test('accepts an administrator profile and the service role', () => {
+  assertEquals(isInvoiceAdministrator({ role: 'admin' }), true);
+  assertEquals(isInvoiceAdministrator(null, true), true);
 });
