@@ -5,7 +5,36 @@ alter table public.quotes
 
 create index if not exists quotes_quote_number_source_id_idx
   on public.quotes (quote_number_source_id);
+-- Existing revisions may have independent legacy numbers. The earliest quote
+-- is canonical; if it had no number, retain the earliest legacy number there.
+do $$
+declare
+  v_root record;
+  v_legacy_number text;
+begin
+  for v_root in
+    select distinct on (order_id) id as source_id, order_id
+    from public.quotes
+    order by order_id, version asc, created_at asc, id asc
+  loop
+    select quote_number into v_legacy_number
+    from public.quotes
+    where order_id = v_root.order_id and quote_number is not null
+    order by version asc, created_at asc, id asc
+    limit 1;
 
+    -- Clear later unique values first, then move the canonical legacy number
+    -- to the deterministic earliest quote.
+    update public.quotes
+    set quote_number_source_id = v_root.source_id,
+        quote_number = null
+    where order_id = v_root.order_id and id <> v_root.source_id;
+    update public.quotes
+    set quote_number = coalesce(quote_number, v_legacy_number)
+    where id = v_root.source_id;
+  end loop;
+end;
+$$;
 create or replace function public.ensure_quote_number(p_quote_id uuid)
 returns text
 language plpgsql
@@ -57,13 +86,14 @@ language plpgsql
 set search_path = public
 as $$
 begin
-  if new.quote_number is null and new.quote_number_source_id is null and new.version > 1 then
+  if new.version > 1 then
     select coalesce(q.quote_number_source_id, q.id)
       into new.quote_number_source_id
     from public.quotes q
     where q.order_id = new.order_id and q.id <> new.id
-    order by q.version asc
+    order by q.version asc, q.created_at asc, q.id asc
     limit 1;
+    new.quote_number := null;
   end if;
   return new;
 end;
@@ -101,6 +131,11 @@ begin
   select id, total into v_quote from public.quotes where id = p_quote_id and order_id = p_order_id and status = 'confirmed' for update;
   if not found then raise exception 'A confirmed quote is required.'; end if;
   perform 1 from public.payment_plan_instalments where order_id = p_order_id for update;
+  if exists (
+    select 1 from jsonb_array_elements(p_instalments) e
+    where nullif(e->>'id', '') is not null
+    group by e->>'id' having count(*) > 1
+  ) then raise exception 'Payment plan instalment IDs must be unique.'; end if;
   if exists (
     select 1 from public.payment_plan_instalments p
     where p.order_id = p_order_id and p.status <> 'draft'
@@ -142,7 +177,7 @@ begin
           raise exception 'Issued or paid instalments cannot be changed.';
         end if;
         select * into v_invoice from public.invoices where payment_plan_instalment_id = v_instalment.id for update;
-        if not found or v_invoice.status not in ('issued', 'paid') then raise exception 'Immutable instalment invoice is unavailable.'; end if;
+        if not found or v_invoice.status not in ('issued', 'paid', 'overdue') then raise exception 'Immutable instalment invoice is unavailable.'; end if;
         id := v_invoice.id; invoice_number := v_invoice.invoice_number; instalment_id := v_instalment.id; status := v_invoice.status; return next;
         continue;
       end if;
@@ -174,13 +209,16 @@ begin
   perform public.assert_payment_plan_admin();
   select * into v_invoice from public.invoices where id = p_invoice_id for update;
   if not found or v_invoice.payment_plan_instalment_id is null then raise exception 'An issued payment-plan invoice is required.'; end if;
+  perform 1 from public.orders where id = v_invoice.order_id for update;
+  if not found then raise exception 'An issued payment-plan invoice is required.'; end if;
+  perform 1 from public.payment_plan_instalments where order_id = v_invoice.order_id for update;
   select * into v_instalment from public.payment_plan_instalments where id = v_invoice.payment_plan_instalment_id and order_id = v_invoice.order_id for update;
   if not found then raise exception 'An issued payment-plan invoice is required.'; end if;
   if v_invoice.status = 'paid' and v_instalment.status = 'paid' then
     select status into v_order_status from public.orders where id = v_invoice.order_id;
     id := v_invoice.id; invoice_number := v_invoice.invoice_number; instalment_id := v_instalment.id; status := 'paid'; order_status := v_order_status; return next; return;
   end if;
-  if v_invoice.status <> 'issued' or v_instalment.status <> 'issued' then raise exception 'An issued payment-plan invoice is required.'; end if;
+  if v_invoice.status not in ('issued', 'overdue') or v_instalment.status not in ('issued', 'overdue') then raise exception 'An issued payment-plan invoice is required.'; end if;
 
   update public.invoices set status = 'paid', paid_at = coalesce(p_paid_at, now()) where id = v_invoice.id;
   update public.payment_plan_instalments set status = 'paid', paid_at = coalesce(p_paid_at, now()) where id = v_instalment.id;

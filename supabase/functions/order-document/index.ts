@@ -148,7 +148,7 @@ export async function loadQuotePdfInput(
   ).eq("id", quoteId).single();
   if (error || !data) throw new Error("Unable to load the quote.");
   const quote = asRecord(data);
-  const { data: schedule, error: scheduleError } = await admin.from("payment_plan_instalments").select("label, percentage, amount, due_on, status").eq("order_id", asString(quote.order_id)).order("sequence");
+  const { data: schedule, error: scheduleError } = await admin.from("payment_plan_instalments").select("quote_id, label, percentage, amount, due_on, status, quotes(version)").eq("order_id", asString(quote.order_id)).order("sequence");
   if (scheduleError) throw new Error("Unable to load the payment schedule.");
   const order = asRecord(firstRow(quote.orders));
   const customer = asRecord(firstRow(order.customers));
@@ -194,7 +194,7 @@ export async function loadQuotePdfInput(
       discountTotal: asNumber(quote.discount_total),
       gstTotal: asNumber(quote.gst_total),
       totalDue: asNumber(quote.total),
-      paymentSchedule: asRows(schedule).map((line) => {
+      paymentSchedule: asRows(schedule).filter((line) => { const row = asRecord(line); const linkedQuote = asRecord(firstRow(row.quotes)); return asString(row.quote_id) === quoteId || (asString(row.status) !== "draft" && asNumber(linkedQuote.version) <= asNumber(quote.version)); }).map((line) => {
         const row = asRecord(line);
         return {
           description: asString(row.label),

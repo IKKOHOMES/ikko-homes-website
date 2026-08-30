@@ -10,8 +10,8 @@ Deno.test("uses the order payment schedule when a revision links immutable insta
     orders: { order_number: "ORDER-1", customers: { first_name: "Aiko", last_name: "Tanaka", email: "aiko@example.com", phone: "0400", address: "1 Studio Lane", auth_user_id: "user-1" } },
   };
   const instalments = [
-    { label: "Deposit", percentage: 50, amount: 500, due_on: "2026-09-01", status: "paid" },
-    { label: "Balance", percentage: 50, amount: 500, due_on: "2026-10-01", status: "draft" },
+    { quote_id: "quote-v1", label: "Deposit", percentage: 50, amount: 500, due_on: "2026-09-01", status: "paid", quotes: { version: 1 } },
+    { quote_id: "quote-v2", label: "Balance", percentage: 50, amount: 500, due_on: "2026-10-01", status: "draft", quotes: { version: 2 } },
   ];
   const admin = {
     from: (table: string) => {
@@ -30,4 +30,29 @@ Deno.test("uses the order payment schedule when a revision links immutable insta
 
   assertEquals(loaded.input.number, "IKKO2026080001");
   assertEquals(loaded.input.paymentSchedule?.map((line) => line.description), ["Deposit", "Balance"]);
+});
+
+Deno.test("does not put a later revision's mutable draft instalment on a historic quote PDF", async () => {
+  const quotes = {
+    "quote-v1": { id: "quote-v1", version: 1, quote_number: "IKKO2026080001", total: 1000, subtotal: 909.09, discount_total: 0, gst_total: 90.91, expires_on: "2026-10-01", created_at: "2026-08-30", order_id: "order-1", quote_lines: [], orders: { order_number: "ORDER-1", customers: { first_name: "Aiko", last_name: "Tanaka", email: "aiko@example.com", phone: "0400", address: "1 Studio Lane", auth_user_id: "user-1" } } },
+    "quote-v2": { id: "quote-v2", version: 2, quote_number: null, quote_number_source_id: "quote-v1", total: 1000, subtotal: 909.09, discount_total: 0, gst_total: 90.91, expires_on: "2026-10-01", created_at: "2026-08-31", order_id: "order-1", quote_lines: [], orders: { order_number: "ORDER-1", customers: { first_name: "Aiko", last_name: "Tanaka", email: "aiko@example.com", phone: "0400", address: "1 Studio Lane", auth_user_id: "user-1" } } },
+  };
+  const allSchedule = [
+    { quote_id: "quote-v1", label: "Deposit", percentage: 50, amount: 500, due_on: "2026-09-01", status: "paid", quotes: { version: 1 } },
+    { quote_id: "quote-v2", label: "Revised balance", percentage: 50, amount: 500, due_on: "2026-10-15", status: "draft", quotes: { version: 2 } },
+  ];
+  const admin = {
+    from: (table: string) => {
+      if (table === "quotes") return { select: () => ({ eq: (_field: string, quoteId: keyof typeof quotes) => ({ single: async () => ({ data: quotes[quoteId], error: null }) }) }) };
+      if (table === "payment_plan_instalments") return { select: () => ({ eq: () => ({ order: async () => ({ data: allSchedule, error: null }) }) }) };
+      return { select: () => ({ eq: () => ({ single: async () => ({ data: { studio_address: "Studio", studio_email: "studio@example.com", studio_phone: "0401" }, error: null }) }) }) };
+    },
+    rpc: async () => ({ data: "IKKO2026080001", error: null }),
+  } as never;
+
+  const historic = await loadQuotePdfInput(admin, "quote-v1");
+  const revision = await loadQuotePdfInput(admin, "quote-v2");
+
+  assertEquals(historic.input.paymentSchedule?.map((line) => line.description), ["Deposit"]);
+  assertEquals(revision.input.paymentSchedule?.map((line) => line.description), ["Deposit", "Revised balance"]);
 });
