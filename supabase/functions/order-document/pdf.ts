@@ -334,6 +334,114 @@ export async function buildOrderPdf(
     color: white,
   });
   y -= 10;
+  page.drawLine({
+    start: { x: MARGIN, y },
+    end: { x: PAGE_WIDTH - MARGIN, y },
+    thickness: 0.7,
+    color: muted,
+  });
+  y -= 18;
+  for (const [lineIndex, line] of input.lines.entries()) {
+    const description = line.finish
+      ? `${line.description} - ${line.finish}`
+      : line.description;
+    const wrapped = splitText(description, sans, 9, 260);
+    const rowHeight = Math.max(24, wrapped.length * 11 + 13);
+
+    // Keep a complete row together and carry every remaining item to a
+    // continuation page. There is deliberately no item-count limit here.
+    if (y - rowHeight < 165) {
+      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: PAGE_WIDTH,
+        height: PAGE_HEIGHT,
+        color: cream,
+      });
+      page.drawImage(logo, {
+        x: MARGIN,
+        y: PAGE_HEIGHT - 79,
+        width: logo.width * logoScale,
+        height: logo.height * logoScale,
+      });
+      page.drawText("ITEMS CONTINUED", {
+        x: MARGIN,
+        y: PAGE_HEIGHT - 105,
+        size: 7.5,
+        font: bold,
+        color: orange,
+      });
+      page.drawRectangle({
+        x: MARGIN,
+        y: PAGE_HEIGHT - 142,
+        width: PAGE_WIDTH - MARGIN * 2,
+        height: 22,
+        color: charcoal,
+      });
+      ["#", "ITEM & DESCRIPTION", "QUANTITY", "RATE", "AMOUNT"].forEach((
+        label,
+        index,
+      ) =>
+        page.drawText(label, {
+          x: [
+            MARGIN + 8,
+            columns.description,
+            columns.quantity,
+            columns.price,
+            columns.total,
+          ][index],
+          y: PAGE_HEIGHT - 134,
+          size: 7.5,
+          font: bold,
+          color: white,
+        })
+      );
+      y = PAGE_HEIGHT - 160;
+    }
+
+    page.drawText(String(lineIndex + 1), {
+      x: MARGIN + 8,
+      y,
+      size: 9,
+      font: sans,
+      color: muted,
+    });
+    wrapped.forEach((part, index) =>
+      page.drawText(part, {
+        x: columns.description,
+        y: y - index * 11,
+        size: 9,
+        font: sans,
+        color: charcoal,
+      })
+    );
+    page.drawText(String(line.quantity), {
+      x: columns.quantity + 4,
+      y,
+      size: 9,
+      font: sans,
+      color: charcoal,
+    });
+    const unitPrice = line.isTbd
+      ? "T.B.D."
+      : `${amount(line.unitPrice)}${line.unit ? ` / ${line.unit}` : ""}`;
+    page.drawText(unitPrice, {
+      x: columns.price,
+      y,
+      size: 8.5,
+      font: sans,
+      color: line.isTbd ? orange : charcoal,
+    });
+    page.drawText(lineAmount(line), {
+      x: columns.total,
+      y,
+      size: 8.5,
+      font: bold,
+      color: line.isTbd ? orange : charcoal,
+    });
+    y -= rowHeight;
+  }
   const newContentPage = () => {
     page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     page.drawRectangle({

@@ -4,6 +4,43 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildOrderPdf, filenameForOrderDocument } from "./pdf.ts";
+async function extractPdfText(document: PDFDocument) {
+  const context = document.context as unknown as {
+    enumerateIndirectObjects(): Iterable<
+      [unknown, { getContents?: () => Uint8Array }]
+    >;
+  };
+  const streams = [...context.enumerateIndirectObjects()].flatMap(
+    ([, object]) => {
+      const contents = object.getContents?.();
+      return contents ? [contents] : [];
+    },
+  );
+  const decoded = await Promise.all(streams.map(async (contents) => {
+    try {
+      const stream = new Blob([
+        contents.buffer.slice(
+          contents.byteOffset,
+          contents.byteOffset + contents.byteLength,
+        ) as ArrayBuffer,
+      ]).stream().pipeThrough(
+        new DecompressionStream("deflate"),
+      );
+      return new TextDecoder("latin1").decode(
+        await new Response(stream).arrayBuffer(),
+      );
+    } catch {
+      return new TextDecoder("latin1").decode(contents);
+    }
+  }));
+  return decoded.join("\n").replace(
+    /<([0-9A-F]+)>/g,
+    (_, hex: string) =>
+      new TextDecoder("latin1").decode(
+        Uint8Array.from(hex.match(/.{2}/g) ?? [], (pair) => parseInt(pair, 16)),
+      ),
+  );
+}
 
 Deno.test("creates an IKKO Homes PDF filename from a document reference", () => {
   assertEquals(
@@ -91,5 +128,11 @@ Deno.test("paginates every long line item with repeated continuation headers", a
     }],
   });
   const document = await PDFDocument.load(result.bytes);
+  const text = await extractPdfText(document);
   assert(result.bytes.byteLength > 4_000);
+  assert(document.getPageCount() >= 2);
+  for (let index = 1; index <= 36; index++) {
+    assert(text.includes(`Custom joinery package ${index}`));
+  }
+  assert(text.includes("ITEMS CONTINUED"));
 });
