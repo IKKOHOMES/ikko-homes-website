@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireAdmin } from "./auth.ts";
+import { requireDocumentCaller, type DocumentCaller } from "./auth.ts";
 import { buildOrderPdf, type OrderPdfInput } from "./pdf.ts";
 
 const corsHeaders = {
@@ -75,12 +75,34 @@ async function studioDetails(admin: SupabaseClient) {
   };
 }
 
+export type LoadedOrderDocument = {
+  orderId: string;
+  recipientEmail: string;
+  customerAuthUserId: string;
+  input: OrderPdfInput;
+};
+
+export function assertDocumentAccess(
+  caller: DocumentCaller,
+  document: Pick<LoadedOrderDocument, "customerAuthUserId">,
+) {
+  if (!caller.isAdmin && caller.id !== document.customerAuthUserId) {
+    throw new Error("Unauthorised.");
+  }
+}
+
+export function assertInvoiceDocumentLifecycle(status: unknown) {
+  if (status !== "issued" && status !== "paid") {
+    throw new Error("Only issued or paid invoices can be downloaded or emailed.");
+  }
+}
+
 export async function loadQuotePdfInput(
   admin: SupabaseClient,
   quoteId: string,
-): Promise<{ orderId: string; recipientEmail: string; input: OrderPdfInput }> {
+): Promise<LoadedOrderDocument> {
   const { data, error } = await admin.from("quotes").select(
-    "id, version, quote_number, total, subtotal, discount_total, gst_total, expires_on, created_at, order_id, quote_lines(display_name, unit_price, quantity, is_tbd), payment_plan_instalments(label, percentage, amount, due_on, status), orders(order_number, customers(first_name, last_name, email, phone, address))",
+    "id, version, quote_number, total, subtotal, discount_total, gst_total, expires_on, created_at, order_id, quote_lines(display_name, unit_price, quantity, is_tbd), payment_plan_instalments(label, percentage, amount, due_on, status), orders(order_number, customers(first_name, last_name, email, phone, address, auth_user_id))",
   ).eq("id", quoteId).single();
   if (error || !data) throw new Error("Unable to load the quote.");
   const quote = asRecord(data);
@@ -101,6 +123,7 @@ export async function loadQuotePdfInput(
   return {
     orderId: asString(quote.order_id),
     recipientEmail: email,
+    customerAuthUserId: asString(customer.auth_user_id),
     input: {
       documentType: "quote",
       number: quoteNumber,
@@ -141,12 +164,12 @@ export async function loadQuotePdfInput(
   };
 }
 
-async function loadInvoicePdfInput(
+export async function loadInvoicePdfInput(
   admin: SupabaseClient,
   invoiceId: string,
-): Promise<{ orderId: string; recipientEmail: string; input: OrderPdfInput }> {
+): Promise<LoadedOrderDocument> {
   const { data, error } = await admin.from("invoices").select(
-    "id, order_id, invoice_number, total, status, due_on, created_at, customer_name, customer_email, customer_address, payment_plan_instalment_id, invoice_lines(display_name, unit_price, quantity, finish), payment_plan_instalments(label, percentage, amount, due_on, status), orders(order_number, customers(phone))",
+    "id, order_id, invoice_number, total, status, due_on, created_at, issued_at, customer_name, customer_email, customer_address, payment_plan_instalment_id, invoice_lines(display_name, unit_price, quantity, finish), payment_plan_instalments(label, percentage, amount, due_on, status), orders(order_number, customers(phone, auth_user_id))",
   ).eq("id", invoiceId).single();
   if (error || !data) throw new Error("Unable to load the invoice.");
   const invoice = asRecord(data);
@@ -159,10 +182,11 @@ async function loadInvoicePdfInput(
   return {
     orderId: asString(invoice.order_id),
     recipientEmail: email,
+    customerAuthUserId: asString(customer.auth_user_id),
     input: {
       documentType: "invoice",
       number: asString(invoice.invoice_number),
-      issuedOn: asString(invoice.created_at),
+      issuedOn: asString(invoice.issued_at) || asString(invoice.created_at),
       dueOn: asString(invoice.due_on),
       invoiceStatus: asString(invoice.status),
       customer: {
@@ -289,13 +313,17 @@ if (import.meta.main) {
       return json({ error: "Method not allowed." }, 405);
     }
     try {
-      const admin = await requireAdmin(request);
+      const { admin, caller } = await requireDocumentCaller(request);
       const { action, documentType, documentId } = parsePayload(
         await request.json(),
       );
       const loaded = documentType === "quote"
         ? await loadQuotePdfInput(admin, documentId)
         : await loadInvoicePdfInput(admin, documentId);
+      assertDocumentAccess(caller, loaded);
+      if (documentType === "invoice") {
+        assertInvoiceDocumentLifecycle(loaded.input.invoiceStatus);
+      }
       const document = await buildOrderPdf(loaded.input);
       if (action === "download") {
         return json({
