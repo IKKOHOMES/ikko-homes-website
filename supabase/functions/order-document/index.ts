@@ -87,6 +87,14 @@ async function loadQuotePdfInput(
   const order = asRecord(firstRow(quote.orders));
   const customer = asRecord(firstRow(order.customers));
   const email = asString(customer.email);
+  let quoteNumber = asString(quote.quote_number);
+  if (!quoteNumber) {
+    const { data: allocated } = await admin.rpc("ensure_quote_number", {
+      p_quote_id: quoteId,
+    });
+    quoteNumber = asString(allocated) ||
+      `QUOTE-${asString(order.order_number)}-V${asNumber(quote.version)}`;
+  }
   if (!asString(order.order_number) || !email) {
     throw new Error("The quote customer is unavailable.");
   }

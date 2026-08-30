@@ -80,7 +80,13 @@ async function embedBrandLogo(pdf: PDFDocument) {
 }
 
 function splitText(text: string, font: PDFFont, size: number, width: number) {
-  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const words = text.replace(/\s+/g, " ").trim().split(" ").flatMap((word) => {
+    const chunks: string[] = [];
+    for (let offset = 0; offset < word.length; offset += 32) {
+      chunks.push(word.slice(offset, offset + 32));
+    }
+    return chunks;
+  }).filter(Boolean);
   const lines: string[] = [];
   let line = "";
   for (const word of words) {
@@ -292,6 +298,13 @@ export async function buildOrderPdf(
     height: 22,
     color: charcoal,
   });
+  page.drawText("#", {
+    x: MARGIN + 8,
+    y: y - 7,
+    size: 7.5,
+    font: bold,
+    color: white,
+  });
   page.drawText("ITEM & DESCRIPTION", {
     x: columns.description,
     y: y - 7,
@@ -321,111 +334,38 @@ export async function buildOrderPdf(
     color: white,
   });
   y -= 10;
-  page.drawLine({
-    start: { x: MARGIN, y },
-    end: { x: PAGE_WIDTH - MARGIN, y },
-    thickness: 0.7,
-    color: muted,
-  });
-  y -= 18;
-  input.lines.forEach((line, lineIndex) => {
-    const description = line.finish
-      ? `${line.description} - ${line.finish}`
-      : line.description;
-    const wrapped = splitText(description, sans, 9, 260);
-    const rowHeight = Math.max(24, wrapped.length * 11 + 13);
-    if (y - rowHeight < 165) {
-      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      page.drawRectangle({
-        x: 0,
-        y: 0,
-        width: PAGE_WIDTH,
-        height: PAGE_HEIGHT,
-        color: cream,
-      });
-      page.drawImage(logo, {
-        x: MARGIN,
-        y: PAGE_HEIGHT - 79,
-        width: logo.width * logoScale,
-        height: logo.height * logoScale,
-      });
-      page.drawText("ITEMS CONTINUED", {
-        x: MARGIN,
-        y: PAGE_HEIGHT - 105,
-        size: 7.5,
-        font: bold,
-        color: orange,
-      });
-      page.drawRectangle({
-        x: MARGIN,
-        y: PAGE_HEIGHT - 142,
-        width: PAGE_WIDTH - MARGIN * 2,
-        height: 22,
-        color: charcoal,
-      });
-      ["#", "ITEM & DESCRIPTION", "QUANTITY", "RATE", "AMOUNT"].forEach((
-        label,
-        index,
-      ) =>
-        page.drawText(label, {
-          x: [
-            MARGIN + 8,
-            columns.description,
-            columns.quantity,
-            columns.price,
-            columns.total,
-          ][index],
-          y: PAGE_HEIGHT - 134,
-          size: 7.5,
-          font: bold,
-          color: white,
-        })
-      );
-      y = PAGE_HEIGHT - 160;
-    }
-    page.drawText(String(lineIndex + 1), {
-      x: MARGIN + 8,
-      y,
-      size: 9,
-      font: sans,
-      color: muted,
+  const newContentPage = () => {
+    page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: PAGE_WIDTH,
+      height: PAGE_HEIGHT,
+      color: cream,
     });
-    wrapped.forEach((part, index) =>
-      page.drawText(part, {
-        x: columns.description,
-        y: y - index * 11,
-        size: 9,
-        font: sans,
-        color: charcoal,
-      })
-    );
-    page.drawText(String(line.quantity), {
-      x: columns.quantity + 4,
-      y,
-      size: 9,
-      font: sans,
+    page.drawImage(logo, {
+      x: MARGIN,
+      y: PAGE_HEIGHT - 79,
+      width: logo.width * logoScale,
+      height: logo.height * logoScale,
+    });
+    page.drawText(documentTitle, {
+      x: PAGE_WIDTH - MARGIN - titleWidth,
+      y: PAGE_HEIGHT - 63,
+      size: 31,
+      font: serif,
       color: charcoal,
     });
-    const unitPrice = line.isTbd
-      ? "T.B.D."
-      : `${amount(line.unitPrice)}${line.unit ? ` / ${line.unit}` : ""}`;
-    page.drawText(unitPrice, {
-      x: columns.price,
-      y,
-      size: 8.5,
-      font: sans,
-      color: line.isTbd ? orange : charcoal,
-    });
-    page.drawText(lineAmount(line), {
-      x: columns.total,
-      y,
-      size: 8.5,
+    page.drawText(input.number, {
+      x: PAGE_WIDTH - MARGIN - referenceWidth,
+      y: PAGE_HEIGHT - 82,
+      size: 9,
       font: bold,
-      color: line.isTbd ? orange : charcoal,
+      color: charcoal,
     });
-    y -= rowHeight;
-  });
-
+    y = PAGE_HEIGHT - 135;
+  };
+  if (y < 255) newContentPage();
   page.drawLine({
     start: { x: MARGIN, y },
     end: { x: PAGE_WIDTH - MARGIN, y },
@@ -433,24 +373,48 @@ export async function buildOrderPdf(
     color: muted,
   });
   y -= 21;
-  page.drawText("TOTAL (AUD)", {
-    x: 395,
-    y,
-    size: 9,
-    font: bold,
-    color: charcoal,
+  const totals = [
+    ["Subtotal", amount(input.subtotal)],
+    [
+      "Discount",
+      input.discountTotal ? `-${amount(input.discountTotal)}` : amount(0),
+    ],
+    ["GST (10%)", amount(input.gstTotal)],
+    ["Total due", amount(input.totalDue)],
+  ];
+  totals.forEach(([label, value], index) => {
+    const yy = y - index * 20;
+    if (index === 3) {
+      page.drawRectangle({
+        x: 375,
+        y: yy - 7,
+        width: 178,
+        height: 23,
+        color: orange,
+      });
+    }
+    page.drawText(label, {
+      x: 395,
+      y: yy,
+      size: index === 3 ? 9 : 8.5,
+      font: index === 3 ? bold : sans,
+      color: index === 3 ? white : muted,
+    });
+    page.drawText(value, {
+      x: 505,
+      y: yy,
+      size: index === 3 ? 10 : 9,
+      font: bold,
+      color: index === 3 ? white : charcoal,
+    });
   });
-  page.drawText(amount(input.totalDue), {
-    x: 505,
-    y,
-    size: 11,
-    font: bold,
-    color: charcoal,
-  });
-  y -= 34;
-
-  if (isQuote && input.paymentSchedule?.length) {
-    page.drawText("PROPOSED PAYMENT PLAN", {
+  y -= 102;
+  const schedule = isQuote
+    ? input.paymentSchedule
+    : (input.invoiceMilestone ? [input.invoiceMilestone] : []);
+  if (schedule?.length) {
+    if (y < 120) newContentPage();
+    page.drawText(isQuote ? "PAYMENT SCHEDULE" : "INVOICE MILESTONE", {
       x: MARGIN,
       y,
       size: 7.5,
@@ -458,33 +422,55 @@ export async function buildOrderPdf(
       color: orange,
     });
     y -= 16;
-    input.paymentSchedule.slice(0, 5).forEach((instalment) => {
-      page.drawText(instalment.description, {
+    ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"].forEach((label, index) =>
+      page.drawText(label, {
+        x: [MARGIN, 300, 390, 485][index],
+        y,
+        size: 7,
+        font: bold,
+        color: muted,
+      })
+    );
+    y -= 15;
+    schedule.forEach((item) => {
+      if (y < 100) {
+        newContentPage();
+        page.drawText(
+          isQuote ? "PAYMENT SCHEDULE CONTINUED" : "INVOICE MILESTONE",
+          { x: MARGIN, y, size: 7.5, font: bold, color: orange },
+        );
+        y -= 22;
+      }
+      page.drawLine({
+        start: { x: MARGIN, y },
+        end: { x: PAGE_WIDTH - MARGIN, y },
+        thickness: .5,
+        color: muted,
+      });
+      y -= 13;
+      drawWrapped(page, item.description, {
         x: MARGIN,
         y,
-        size: 9,
+        width: 245,
+        size: 8.5,
         font: sans,
-        color: charcoal,
       });
-      page.drawText(`Due ${humanDate(instalment.dueOn)}`, {
-        x: 285,
+      page.drawText(`${item.percentage}%`, {
+        x: 300,
         y,
         size: 8.5,
         font: sans,
-        color: muted,
       });
-      page.drawText(amount(instalment.amount), {
-        x: 505,
+      page.drawText(amount(item.amount), { x: 390, y, size: 8.5, font: bold });
+      page.drawText(humanDate(item.dueOn), {
+        x: 485,
         y,
-        size: 9,
-        font: bold,
-        color: charcoal,
+        size: 7.5,
+        font: sans,
       });
-      y -= 16;
+      y -= 20;
     });
-    y -= 9;
   }
-
   const note = isQuote
     ? "This quote is prepared for your review. Please contact our studio to confirm before invoices are issued."
     : input.invoiceStatus === "paid"
