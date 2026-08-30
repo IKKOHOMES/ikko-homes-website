@@ -127,7 +127,7 @@ export async function buildOrderPdf(
   input: OrderPdfInput,
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const pdf = await PDFDocument.create();
-  const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const serif = await pdf.embedFont(StandardFonts.TimesRoman);
   const sans = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -328,12 +328,69 @@ export async function buildOrderPdf(
     color: muted,
   });
   y -= 18;
-  input.lines.slice(0, 11).forEach((line) => {
+  input.lines.forEach((line, lineIndex) => {
     const description = line.finish
       ? `${line.description} - ${line.finish}`
       : line.description;
     const wrapped = splitText(description, sans, 9, 260);
-    wrapped.slice(0, 2).forEach((part, index) =>
+    const rowHeight = Math.max(24, wrapped.length * 11 + 13);
+    if (y - rowHeight < 165) {
+      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: PAGE_WIDTH,
+        height: PAGE_HEIGHT,
+        color: cream,
+      });
+      page.drawImage(logo, {
+        x: MARGIN,
+        y: PAGE_HEIGHT - 79,
+        width: logo.width * logoScale,
+        height: logo.height * logoScale,
+      });
+      page.drawText("ITEMS CONTINUED", {
+        x: MARGIN,
+        y: PAGE_HEIGHT - 105,
+        size: 7.5,
+        font: bold,
+        color: orange,
+      });
+      page.drawRectangle({
+        x: MARGIN,
+        y: PAGE_HEIGHT - 142,
+        width: PAGE_WIDTH - MARGIN * 2,
+        height: 22,
+        color: charcoal,
+      });
+      ["#", "ITEM & DESCRIPTION", "QUANTITY", "RATE", "AMOUNT"].forEach((
+        label,
+        index,
+      ) =>
+        page.drawText(label, {
+          x: [
+            MARGIN + 8,
+            columns.description,
+            columns.quantity,
+            columns.price,
+            columns.total,
+          ][index],
+          y: PAGE_HEIGHT - 134,
+          size: 7.5,
+          font: bold,
+          color: white,
+        })
+      );
+      y = PAGE_HEIGHT - 160;
+    }
+    page.drawText(String(lineIndex + 1), {
+      x: MARGIN + 8,
+      y,
+      size: 9,
+      font: sans,
+      color: muted,
+    });
+    wrapped.forEach((part, index) =>
       page.drawText(part, {
         x: columns.description,
         y: y - index * 11,
@@ -349,7 +406,9 @@ export async function buildOrderPdf(
       font: sans,
       color: charcoal,
     });
-    const unitPrice = line.isTbd ? "T.B.D." : amount(line.unitPrice);
+    const unitPrice = line.isTbd
+      ? "T.B.D."
+      : `${amount(line.unitPrice)}${line.unit ? ` / ${line.unit}` : ""}`;
     page.drawText(unitPrice, {
       x: columns.price,
       y,
@@ -364,7 +423,7 @@ export async function buildOrderPdf(
       font: bold,
       color: line.isTbd ? orange : charcoal,
     });
-    y -= Math.max(24, wrapped.length * 11 + 13);
+    y -= rowHeight;
   });
 
   page.drawLine({
