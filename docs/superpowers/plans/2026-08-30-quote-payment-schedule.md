@@ -361,7 +361,20 @@ Expected: exit code 0. Treat only the existing Vite chunk-size warning as non-bl
 ```bash
 git add docs/superpowers/plans/2026-08-30-quote-payment-schedule.md
 git commit -m "docs: record quote payment schedule verification"
-git push origin codex/staged-order-documents-implementation:main
+git push origin codex/quote-payment-schedule-sdd:main
 ```
 
 Verify Supabase migration and both Edge Function deployments report success. Verify Vercel finishes the Git-connected production deployment before reporting completion.
+#### Task 6 verification record (2026-08-30)
+
+- Client suite: `npm test -- --run` completed with 52 passing files / 126 passing tests and 14 failing files / 39 failing tests. The failures are environment-only provider errors (`Supabase is not configured.`); this worktree has no `.env` file (only `.env.example`).
+- Edge/PDF suites: `npx --yes deno test --allow-env --allow-net supabase/functions/admin-invoice/index.test.ts supabase/functions/order-document/pdf.test.ts` passed, 15/15 tests.
+- Production build: `npm run build` passed (`tsc -b && vite build`). Existing dynamic-import notices and the existing >500 kB chunk warning were emitted; no type or build errors occurred.
+- Supabase migration history: read-only `npx supabase migration list --project-ref jryybnersfuhaloxkhov` showed every local migration through `202608300004` already remote, including `202608300001_quote_payment_schedule`.
+- Supabase deployment attempts: `admin-invoice` and `order-document` deployment commands were safety-denied as external production mutations. Read-only function metadata shows both functions active at remote version 3, but this does not establish that the current branch contents are deployed.
+- Manual administrator acceptance flow: blocked because no configured application environment or safely discoverable current administrator identity is available. No service-role provisioning or test data mutation was attempted.
+- Vercel production verification: blocked; no authenticated/linkable deployment context was available, and source release is not safe while the client suite and external deployment checks remain unresolved.
+- The original release command referenced stale source `codex/staged-order-documents-implementation`; the command is corrected to use `codex/quote-payment-schedule-sdd` as its source.
+
+
+
