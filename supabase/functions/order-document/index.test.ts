@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   assertDocumentAccess,
   assertInvoiceDocumentLifecycle,
+  loadAuthorisedOrderDocument,
   loadInvoicePdfInput,
   loadQuotePdfInput,
 } from "./index.ts";
@@ -59,6 +60,45 @@ Deno.test("denies a customer access to another customer's order document", () =>
   );
 });
 
+Deno.test("authorises ownership before loading a legacy quote or allocating its number", async () => {
+  let quoteSelects = 0;
+  let numberAllocations = 0;
+  const admin = {
+    from(table: string) {
+      assertEquals(table, "quotes");
+      return {
+        select: () => {
+          quoteSelects += 1;
+          return {
+            eq: () => ({
+              single: async () => ({
+                data: { orders: { customers: { auth_user_id: "customer-2" } } },
+                error: null,
+              }),
+            }),
+          };
+        },
+      };
+    },
+    rpc: async () => {
+      numberAllocations += 1;
+      return { data: "IKKO2026080042", error: null };
+    },
+  } as unknown as SupabaseClient;
+
+  await assertRejects(
+    () => loadAuthorisedOrderDocument(
+      { id: "customer-1", isAdmin: false },
+      "quote",
+      "quote-1",
+      admin,
+    ),
+    Error,
+    "Unauthorised.",
+  );
+  assertEquals(quoteSelects, 1);
+  assertEquals(numberAllocations, 0);
+});
 Deno.test("allows an explicit administrator to access any order document", () => {
   assertDocumentAccess({ id: "admin-1", isAdmin: true }, { customerAuthUserId: "customer-1" });
 });

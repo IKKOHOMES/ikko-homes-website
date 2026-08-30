@@ -97,6 +97,48 @@ export function assertInvoiceDocumentLifecycle(status: unknown) {
   }
 }
 
+export type DocumentAccess = {
+  customerAuthUserId: string;
+  invoiceStatus?: unknown;
+};
+
+export async function loadDocumentAccess(
+  admin: SupabaseClient,
+  documentType: DocumentType,
+  documentId: string,
+): Promise<DocumentAccess> {
+  const fields = documentType === "invoice"
+    ? "status, orders(customers(auth_user_id))"
+    : "orders(customers(auth_user_id))";
+  const { data, error } = await admin.from(
+    documentType === "quote" ? "quotes" : "invoices",
+  ).select(fields).eq("id", documentId).single();
+  if (error || !data) throw new Error("Unable to load the document.");
+
+  const document = asRecord(data);
+  const order = asRecord(firstRow(document.orders));
+  const customer = asRecord(firstRow(order.customers));
+  return {
+    customerAuthUserId: asString(customer.auth_user_id),
+    invoiceStatus: documentType === "invoice" ? document.status : undefined,
+  };
+}
+
+export async function loadAuthorisedOrderDocument(
+  caller: DocumentCaller,
+  documentType: DocumentType,
+  documentId: string,
+  admin: SupabaseClient,
+): Promise<LoadedOrderDocument> {
+  const access = await loadDocumentAccess(admin, documentType, documentId);
+  assertDocumentAccess(caller, access);
+  if (documentType === "invoice") {
+    assertInvoiceDocumentLifecycle(access.invoiceStatus);
+  }
+  return documentType === "quote"
+    ? await loadQuotePdfInput(admin, documentId)
+    : await loadInvoicePdfInput(admin, documentId);
+}
 export async function loadQuotePdfInput(
   admin: SupabaseClient,
   quoteId: string,
@@ -317,13 +359,12 @@ if (import.meta.main) {
       const { action, documentType, documentId } = parsePayload(
         await request.json(),
       );
-      const loaded = documentType === "quote"
-        ? await loadQuotePdfInput(admin, documentId)
-        : await loadInvoicePdfInput(admin, documentId);
-      assertDocumentAccess(caller, loaded);
-      if (documentType === "invoice") {
-        assertInvoiceDocumentLifecycle(loaded.input.invoiceStatus);
-      }
+      const loaded = await loadAuthorisedOrderDocument(
+        caller,
+        documentType,
+        documentId,
+        admin,
+      );
       const document = await buildOrderPdf(loaded.input);
       if (action === "download") {
         return json({
