@@ -8,7 +8,7 @@ import {
   filenameForOrderDocument,
   SCHEDULE_CONTENT_START_Y,
   SCHEDULE_FOOTER_SAFETY_Y,
-  SCHEDULE_HEADER_HEIGHT,
+  scheduleHeaderLayout,
   scheduleRowHeight,
   scheduleSegmentLineCapacity,
   splitText,
@@ -358,14 +358,13 @@ Deno.test("keeps every tall schedule segment above the footer safety boundary", 
     8.5,
     245,
   );
-  const continuationContentY = SCHEDULE_CONTENT_START_Y;
-  const scheduleHeaderHeight = SCHEDULE_HEADER_HEIGHT;
-  let y = continuationContentY - scheduleHeaderHeight;
+  const continuationY = scheduleHeaderLayout(SCHEDULE_CONTENT_START_Y).nextY;
+  let y = continuationY;
   let remaining = [...descriptionLines];
   let segments = 0;
   while (remaining.length) {
     if (y - scheduleRowHeight(remaining.length) < SCHEDULE_FOOTER_SAFETY_Y) {
-      y = continuationContentY - scheduleHeaderHeight;
+      y = continuationY;
     }
     const capacity = scheduleSegmentLineCapacity(y);
     assert(capacity >= 1);

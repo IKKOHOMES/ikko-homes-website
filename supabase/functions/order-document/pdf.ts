@@ -43,7 +43,7 @@ const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 42;
 export const SCHEDULE_CONTENT_START_Y = PAGE_HEIGHT - 135;
-export const SCHEDULE_HEADER_HEIGHT = 31;
+
 const charcoal = rgb(0.14, 0.13, 0.12);
 const muted = rgb(0.37, 0.34, 0.31);
 const orange = rgb(0.945, 0.35, 0.212);
@@ -51,6 +51,16 @@ const cream = rgb(0.969, 0.957, 0.937);
 const white = rgb(1, 1, 1);
 const logoPath = "site-assets/brand/ikko-logo-header.png";
 export const SCHEDULE_FOOTER_SAFETY_Y = 112;
+export function scheduleHeaderLayout(y: number) {
+  const columnY = y - 16;
+  const nextY = columnY - 15;
+  return {
+    titleY: y,
+    columnY,
+    nextY,
+    consumedHeight: y - nextY,
+  };
+}
 const SCHEDULE_LINE_HEIGHT = 11;
 const SCHEDULE_ROW_TOP_PADDING = 13;
 const SCHEDULE_MIN_ROW_HEIGHT = 24;
@@ -563,8 +573,8 @@ export async function buildOrderPdf(
     : (input.invoiceMilestone ? [input.invoiceMilestone] : []);
   if (schedule?.length) {
     const footerSafetyY = SCHEDULE_FOOTER_SAFETY_Y;
-    const scheduleHeaderHeight = SCHEDULE_HEADER_HEIGHT;
     const drawScheduleHeader = (continued = false) => {
+      const layout = scheduleHeaderLayout(y);
       page.drawText(
         continued
           ? isQuote
@@ -573,22 +583,22 @@ export async function buildOrderPdf(
           : isQuote
           ? "PAYMENT SCHEDULE"
           : "INVOICE MILESTONE",
-        { x: MARGIN, y, size: 7.5, font: bold, color: orange },
+        { x: MARGIN, y: layout.titleY, size: 7.5, font: bold, color: orange },
       );
-      y -= 16;
       ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"].forEach(
         (label, index) =>
           page.drawText(label, {
             x: [MARGIN, 300, 390, 485][index],
-            y,
+            y: layout.columnY,
             size: 7,
             font: bold,
             color: muted,
           }),
       );
-      y -= 15;
+      y = layout.nextY;
+      return layout;
     };
-    if (y - scheduleHeaderHeight < footerSafetyY) newContentPage();
+    if (scheduleHeaderLayout(y).nextY < footerSafetyY) newContentPage();
     drawScheduleHeader();
     for (const item of schedule) {
       const remainingDescriptionLines = splitText(

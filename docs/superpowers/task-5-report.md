@@ -58,3 +58,11 @@ The schedule pagination math is now exposed as production-used helpers for row h
 - `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
 - Footer-safety fixture SHA-256: `870CA806B7BE61E7E3E4BA1997433BC8917C4FFAEFECE3EF66A180F16BB4A449`; Poppler rendered 3 pages.
 - Visual inspection remains blocked by the Windows sandbox helper (`helper_unknown_error: setup refresh had errors`); Poppler rendering completed with non-fatal Symbol/ArialUnicode display-font notices.
+## Shared header-layout verification (2026-08-30)
+
+The coordinate-level footer regression no longer duplicates header consumption. `scheduleHeaderLayout(y)` is production code used by `drawScheduleHeader` to position title/columns and assign the next cursor y; the initial pagination preflight also derives its fit check from that helper. The tall-row coordinate test calls the same helper to obtain the post-continuation-header y, so any header-layout change affects rendering and the test together.
+
+- `npx --yes deno test --allow-env --allow-net supabase/functions/order-document/pdf.test.ts supabase/functions/order-document/index.test.ts`: PASS (9 tests).
+- `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
+- Shared-header fixture SHA-256: `80032F8716EAB8CB82C957C3E71DA3403BAA50D041B79C0E38CD84ED3C0710A1`; Poppler rendered 3 pages.
+- Visual inspection remains blocked by the Windows sandbox helper (`helper_unknown_error: setup refresh had errors`); Poppler rendered successfully with non-fatal Symbol/ArialUnicode display-font notices.
