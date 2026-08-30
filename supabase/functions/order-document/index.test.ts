@@ -32,10 +32,11 @@ Deno.test("uses an allocated quote number for a legacy quote PDF input", async (
   };
   const admin = {
     from(table: string) {
-      const data = table === "quotes" ? quote : {
+      if (table === "quotes") return { select: () => ({ eq: () => ({ single: async () => ({ data: quote, error: null }) }) }) };
+      if (table === "payment_plan_instalments") return { select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }) };
+      return { select: () => ({ eq: () => ({ single: async () => ({ data: {
         studio_address: "69 Patricia Loop", studio_email: "accounts@ikkohomes.com", studio_phone: "0490 384 021",
-      };
-      return { select: () => ({ eq: () => ({ single: async () => ({ data, error: null }) }) }) };
+      }, error: null }) }) }) };
     },
     rpc: async (name: string, params: Record<string, string>) => {
       assertEquals(name, "ensure_quote_number");

@@ -144,10 +144,12 @@ export async function loadQuotePdfInput(
   quoteId: string,
 ): Promise<LoadedOrderDocument> {
   const { data, error } = await admin.from("quotes").select(
-    "id, version, quote_number, total, subtotal, discount_total, gst_total, expires_on, created_at, order_id, quote_lines(display_name, unit_price, quantity, is_tbd), payment_plan_instalments(label, percentage, amount, due_on, status), orders(order_number, customers(first_name, last_name, email, phone, address, auth_user_id))",
+    "id, version, quote_number, quote_number_source_id, total, subtotal, discount_total, gst_total, expires_on, created_at, order_id, quote_lines(display_name, unit_price, quantity, is_tbd), orders(order_number, customers(first_name, last_name, email, phone, address, auth_user_id))",
   ).eq("id", quoteId).single();
   if (error || !data) throw new Error("Unable to load the quote.");
   const quote = asRecord(data);
+  const { data: schedule, error: scheduleError } = await admin.from("payment_plan_instalments").select("label, percentage, amount, due_on, status").eq("order_id", asString(quote.order_id)).order("sequence");
+  if (scheduleError) throw new Error("Unable to load the payment schedule.");
   const order = asRecord(firstRow(quote.orders));
   const customer = asRecord(firstRow(order.customers));
   const email = asString(customer.email);
@@ -192,7 +194,7 @@ export async function loadQuotePdfInput(
       discountTotal: asNumber(quote.discount_total),
       gstTotal: asNumber(quote.gst_total),
       totalDue: asNumber(quote.total),
-      paymentSchedule: asRows(quote.payment_plan_instalments).map((line) => {
+      paymentSchedule: asRows(schedule).map((line) => {
         const row = asRecord(line);
         return {
           description: asString(row.label),

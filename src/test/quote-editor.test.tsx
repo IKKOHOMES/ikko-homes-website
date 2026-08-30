@@ -16,3 +16,9 @@ test('blocks quote confirmation while a line remains T.B.D.', async () => {
   expect(screen.getByText('Price every quote line before confirming.')).toBeInTheDocument();
   expect(onConfirm).not.toHaveBeenCalled();
 });
+
+test('displays the retained IKKO number on a revised quote', () => {
+  render(<QuoteEditor quote={{ ...quoteWithTbdLine, version: 2, quoteNumber: 'IKKO2026080001' }} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  expect(screen.getByText('Quote IKKO2026080001 · v2')).toBeInTheDocument();
+});

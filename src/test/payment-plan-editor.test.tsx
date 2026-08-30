@@ -40,3 +40,13 @@ test('requires a successful save in this session before syncing an initial valid
   await user.type(screen.getByRole('textbox', { name: 'Instalment 1 description' }), ' updated');
   expect(sync).toBeDisabled();
 });
+test('keeps issued rows immutable while leaving a draft row editable', async () => {
+  render(<PaymentPlanEditor quoteTotal={1000} instalments={[
+    { id: 'plan-1', label: 'Deposit', percentage: 50, amount: 500, dueOn: '2026-09-01', internalNote: '', status: 'issued' },
+    { id: 'plan-2', label: 'Balance', percentage: 50, amount: 500, dueOn: '2026-10-01', internalNote: '', status: 'draft' },
+  ]} onSave={vi.fn()} onSync={vi.fn()} />);
+
+  expect(screen.getByRole('textbox', { name: 'Instalment 1 description' })).toBeDisabled();
+  expect(screen.getByRole('spinbutton', { name: 'Instalment 2 amount' })).toBeEnabled();
+  expect(screen.getAllByRole('button', { name: 'Remove' })[0]).toBeDisabled();
+});
