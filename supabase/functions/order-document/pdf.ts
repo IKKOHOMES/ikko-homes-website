@@ -79,29 +79,50 @@ async function embedBrandLogo(pdf: PDFDocument) {
   return pdf.embedPng(await response.arrayBuffer());
 }
 
-function splitText(text: string, font: PDFFont, size: number, width: number) {
-  const words = text.replace(/\s+/g, " ").trim().split(" ").flatMap((word) => {
+export function splitText(
+  text: string,
+  font: PDFFont,
+  size: number,
+  width: number,
+) {
+  const splitWord = (word: string) => {
     const chunks: string[] = [];
-    for (let offset = 0; offset < word.length; offset += 32) {
-      chunks.push(word.slice(offset, offset + 32));
+    let remainder = word;
+    while (remainder && font.widthOfTextAtSize(remainder, size) > width) {
+      let low = 1;
+      let high = remainder.length;
+      while (low < high) {
+        const midpoint = Math.ceil((low + high) / 2);
+        if (
+          font.widthOfTextAtSize(remainder.slice(0, midpoint), size) <= width
+        ) {
+          low = midpoint;
+        } else {
+          high = midpoint - 1;
+        }
+      }
+      chunks.push(remainder.slice(0, low));
+      remainder = remainder.slice(low);
     }
+    if (remainder) chunks.push(remainder);
     return chunks;
-  }).filter(Boolean);
+  };
+  const words = text.replace(/\s+/g, " ").trim().split(" ").flatMap(splitWord)
+    .filter(Boolean);
   const lines: string[] = [];
   let line = "";
   for (const word of words) {
     const candidate = line ? `${line} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, size) <= width || !line) {
+    if (font.widthOfTextAtSize(candidate, size) <= width) {
       line = candidate;
     } else {
-      lines.push(line);
+      if (line) lines.push(line);
       line = word;
     }
   }
   if (line) lines.push(line);
   return lines.length ? lines : [""];
 }
-
 function drawWrapped(
   page: PDFPage,
   text: string,

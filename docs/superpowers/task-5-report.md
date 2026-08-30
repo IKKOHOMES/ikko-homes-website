@@ -23,3 +23,12 @@ Restored the order-document line-item rendering loop after the item-table header
 ## Visual review blocker
 
 Poppler rendering completed (with non-fatal missing display-font notices for Symbol and ArialUnicode), but the required visual inspection tool could not open the PNGs because the Windows filesystem sandbox helper failed with `helper_unknown_error: setup refresh had errors`. The generated pages remain available locally for review.
+## Review follow-up (2026-08-30)
+
+- Allocated quote numbers now flow through the quote PDF input; the generated input drives its reference, filename, and email subject/reference. The legacy fallback remains only when allocation produces no number.
+- Payment schedule rows are measured from their wrapped descriptions before drawing. Rows move as a whole before the footer area, and each continuation repeats `PAYMENT SCHEDULE CONTINUED` plus `DESCRIPTION`, `PERCENT`, `AMOUNT`, and `DUE DATE`.
+- `splitText` now uses binary width-based splitting for long unbroken tokens; each emitted segment fits its specified column width.
+- Focused tests: `npx --yes deno test --allow-env --allow-net supabase/functions/order-document/pdf.test.ts supabase/functions/order-document/index.test.ts`: PASS (7 tests).
+- `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
+- Updated fixture SHA-256: `CCBF34E6FFD928951B21000D2B4CE5DD0002FF5A6CF9DA5C04DA45AE9E1FEE8E`; Poppler rendered 5 pages to `tmp/pdfs/quote-payment-schedule-review-final-*.png`.
+- The same visual-tool blocker remains: rendering completed, but the inspection tool could not open a PNG because the Windows sandbox helper reported `helper_unknown_error: setup refresh had errors`. Poppler again reported non-fatal missing display fonts for Symbol and ArialUnicode.

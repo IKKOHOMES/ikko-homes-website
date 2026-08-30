@@ -75,7 +75,7 @@ async function studioDetails(admin: SupabaseClient) {
   };
 }
 
-async function loadQuotePdfInput(
+export async function loadQuotePdfInput(
   admin: SupabaseClient,
   quoteId: string,
 ): Promise<{ orderId: string; recipientEmail: string; input: OrderPdfInput }> {
@@ -103,8 +103,7 @@ async function loadQuotePdfInput(
     recipientEmail: email,
     input: {
       documentType: "quote",
-      number: asString(quote.quote_number) ||
-        `QUOTE-${asString(order.order_number)}-V${asNumber(quote.version)}`,
+      number: quoteNumber,
       issuedOn: asString(quote.created_at),
       expiresOn: asString(quote.expires_on),
       customer: {

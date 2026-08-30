@@ -1,9 +1,9 @@
-import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
+import { PDFDocument, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildOrderPdf, filenameForOrderDocument } from "./pdf.ts";
+import { buildOrderPdf, filenameForOrderDocument, splitText } from "./pdf.ts";
 async function extractPdfText(document: PDFDocument) {
   const context = document.context as unknown as {
     enumerateIndirectObjects(): Iterable<
@@ -135,4 +135,107 @@ Deno.test("paginates every long line item with repeated continuation headers", a
     assert(text.includes(`Custom joinery package ${index}`));
   }
   assert(text.includes("ITEMS CONTINUED"));
+});
+
+Deno.test("splits an unbroken wide token to the available PDF column width", async () => {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const width = 120;
+  const segments = splitText("W".repeat(120), font, 9, width);
+  assert(segments.length > 1);
+  for (const segment of segments) {
+    assert(font.widthOfTextAtSize(segment, 9) <= width);
+  }
+});
+
+Deno.test("paginates wrapped schedule rows with repeated headers and preserves financial fields", async () => {
+  Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
+  const result = await buildOrderPdf({
+    documentType: "quote",
+    number: "IKKO2026080100",
+    issuedOn: "2026-08-30",
+    customer: {
+      name: "Schedule Customer",
+      email: "schedule@example.com",
+      phone: "0400 000 000",
+      address: "69 Patricia Loop",
+    },
+    studio: {
+      address: "69 Patricia Loop",
+      email: "accounts@ikkohomes.com",
+      phone: "0490 384 021",
+    },
+    lines: [{ description: "Joinery package", quantity: 1, unitPrice: 1000 }],
+    subtotal: 1000,
+    discountTotal: 100,
+    gstTotal: 90,
+    totalDue: 990,
+    paymentSchedule: Array.from({ length: 20 }, (_, index) => ({
+      description: `Schedule milestone ${
+        index + 1
+      } with a deliberately detailed description that wraps across the description column`,
+      percentage: 5,
+      amount: 49.5,
+      dueOn: "2026-09-15",
+    })),
+  });
+  const document = await PDFDocument.load(result.bytes);
+  const text = await extractPdfText(document);
+  assert(document.getPageCount() >= 2);
+  for (let index = 1; index <= 20; index++) {
+    assert(text.includes(`Schedule milestone ${index}`));
+  }
+  assert(text.includes("PAYMENT SCHEDULE CONTINUED"));
+  assert((text.match(/DESCRIPTION/g) ?? []).length >= 2);
+  assert(text.includes("Subtotal"));
+  assert(text.includes("Discount"));
+  assert(text.includes("GST (10%)"));
+  assert(text.includes("Total due"));
+});
+
+Deno.test("renders invoice milestone fields alongside the financial summary", async () => {
+  Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
+  const result = await buildOrderPdf({
+    documentType: "invoice",
+    number: "INV-1001",
+    issuedOn: "2026-08-30",
+    dueOn: "2026-09-15",
+    customer: {
+      name: "Invoice Customer",
+      email: "invoice@example.com",
+      phone: "0400 000 000",
+      address: "69 Patricia Loop",
+    },
+    studio: {
+      address: "69 Patricia Loop",
+      email: "accounts@ikkohomes.com",
+      phone: "0490 384 021",
+    },
+    lines: [{ description: "Final joinery", quantity: 1, unitPrice: 1100 }],
+    subtotal: 1000,
+    discountTotal: 0,
+    gstTotal: 100,
+    totalDue: 1100,
+    invoiceMilestone: {
+      description: "Final completion",
+      percentage: 100,
+      amount: 1100,
+      dueOn: "2026-09-15",
+    },
+  });
+  const text = await extractPdfText(await PDFDocument.load(result.bytes));
+  for (
+    const value of [
+      "Subtotal",
+      "Discount",
+      "GST (10%)",
+      "Total due",
+      "INVOICE MILESTONE",
+      "Final completion",
+      "100%",
+      "15 Sept 2026",
+    ]
+  ) {
+    assert(text.includes(value));
+  }
 });
