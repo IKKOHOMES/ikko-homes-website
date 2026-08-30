@@ -8,7 +8,7 @@ export function PaymentPlanEditor({ quoteTotal, instalments, onSave, onSync }: {
   onSync: () => Promise<void> | void;
 }) {
   const [lines, setLines] = useState(instalments);
-  const [savedLines, setSavedLines] = useState(JSON.stringify(instalments));
+  const [savedLines, setSavedLines] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const validation = useMemo(() => validatePaymentPlan(lines, quoteTotal), [lines, quoteTotal]);
