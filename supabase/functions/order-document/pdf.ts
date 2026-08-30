@@ -542,33 +542,41 @@ export async function buildOrderPdf(
     ? input.paymentSchedule
     : (input.invoiceMilestone ? [input.invoiceMilestone] : []);
   if (schedule?.length) {
-    if (y < 120) newContentPage();
-    page.drawText(isQuote ? "PAYMENT SCHEDULE" : "INVOICE MILESTONE", {
-      x: MARGIN,
-      y,
-      size: 7.5,
-      font: bold,
-      color: orange,
-    });
-    y -= 16;
-    ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"].forEach((label, index) =>
-      page.drawText(label, {
-        x: [MARGIN, 300, 390, 485][index],
-        y,
-        size: 7,
-        font: bold,
-        color: muted,
-      })
-    );
-    y -= 15;
-    schedule.forEach((item) => {
-      if (y < 100) {
+    const footerSafetyY = 112;
+    const scheduleHeaderHeight = 31;
+    const drawScheduleHeader = (continued = false) => {
+      page.drawText(
+        continued
+          ? isQuote
+            ? "PAYMENT SCHEDULE CONTINUED"
+            : "INVOICE MILESTONE CONTINUED"
+          : isQuote
+          ? "PAYMENT SCHEDULE"
+          : "INVOICE MILESTONE",
+        { x: MARGIN, y, size: 7.5, font: bold, color: orange },
+      );
+      y -= 16;
+      ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"].forEach(
+        (label, index) =>
+          page.drawText(label, {
+            x: [MARGIN, 300, 390, 485][index],
+            y,
+            size: 7,
+            font: bold,
+            color: muted,
+          }),
+      );
+      y -= 15;
+    };
+    if (y - scheduleHeaderHeight < footerSafetyY) newContentPage();
+    drawScheduleHeader();
+    for (const item of schedule) {
+      const descriptionLines = splitText(item.description, sans, 8.5, 245);
+      const descriptionHeight = descriptionLines.length * 11;
+      const rowHeight = Math.max(24, descriptionHeight + 13);
+      if (y - rowHeight < footerSafetyY) {
         newContentPage();
-        page.drawText(
-          isQuote ? "PAYMENT SCHEDULE CONTINUED" : "INVOICE MILESTONE",
-          { x: MARGIN, y, size: 7.5, font: bold, color: orange },
-        );
-        y -= 22;
+        drawScheduleHeader(true);
       }
       page.drawLine({
         start: { x: MARGIN, y },
@@ -577,13 +585,15 @@ export async function buildOrderPdf(
         color: muted,
       });
       y -= 13;
-      drawWrapped(page, item.description, {
-        x: MARGIN,
-        y,
-        width: 245,
-        size: 8.5,
-        font: sans,
-      });
+      descriptionLines.forEach((part, index) =>
+        page.drawText(part, {
+          x: MARGIN,
+          y: y - index * 11,
+          size: 8.5,
+          font: sans,
+          color: charcoal,
+        })
+      );
       page.drawText(`${item.percentage}%`, {
         x: 300,
         y,
@@ -597,8 +607,8 @@ export async function buildOrderPdf(
         size: 7.5,
         font: sans,
       });
-      y -= 20;
-    });
+      y -= rowHeight - 13;
+    }
   }
   const note = isQuote
     ? "This quote is prepared for your review. Please contact our studio to confirm before invoices are issued."

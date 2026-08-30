@@ -42,6 +42,42 @@ async function extractPdfText(document: PDFDocument) {
   );
 }
 
+async function extractPdfPageText(document: PDFDocument) {
+  const context = document.context as unknown as {
+    lookup(reference: unknown): { getContents?: () => Uint8Array };
+  };
+  return await Promise.all(
+    document.getPages().map(async (page) => {
+      const contents = (page.node as unknown as {
+        Contents(): { asArray(): unknown[] };
+      }).Contents().asArray().flatMap((reference) => {
+        const bytes = context.lookup(reference).getContents?.();
+        return bytes ? [bytes] : [];
+      });
+      const decoded = await Promise.all(contents.map(async (bytes) => {
+        const stream = new Blob([
+          bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer,
+        ]).stream().pipeThrough(new DecompressionStream("deflate"));
+        return new TextDecoder("latin1").decode(
+          await new Response(stream).arrayBuffer(),
+        );
+      }));
+      return decoded.join("\n").replace(
+        /<([0-9A-F]+)>/g,
+        (_, hex: string) =>
+          new TextDecoder("latin1").decode(
+            Uint8Array.from(
+              hex.match(/.{2}/g) ?? [],
+              (pair) => parseInt(pair, 16),
+            ),
+          ),
+      );
+    }),
+  );
+}
 Deno.test("creates an IKKO Homes PDF filename from a document reference", () => {
   assertEquals(
     filenameForOrderDocument("IKKO Q-1001"),
@@ -185,8 +221,16 @@ Deno.test("paginates wrapped schedule rows with repeated headers and preserves f
   for (let index = 1; index <= 20; index++) {
     assert(text.includes(`Schedule milestone ${index}`));
   }
-  assert(text.includes("PAYMENT SCHEDULE CONTINUED"));
-  assert((text.match(/DESCRIPTION/g) ?? []).length >= 2);
+  const pages = await extractPdfPageText(document);
+  const continuationPages = pages.filter((page) =>
+    page.includes("PAYMENT SCHEDULE CONTINUED")
+  );
+  assert(continuationPages.length >= 1);
+  for (const page of continuationPages) {
+    for (const header of ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"]) {
+      assert(page.includes(header));
+    }
+  }
   assert(text.includes("Subtotal"));
   assert(text.includes("Discount"));
   assert(text.includes("GST (10%)"));

@@ -32,3 +32,12 @@ Poppler rendering completed (with non-fatal missing display-font notices for Sym
 - `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
 - Updated fixture SHA-256: `CCBF34E6FFD928951B21000D2B4CE5DD0002FF5A6CF9DA5C04DA45AE9E1FEE8E`; Poppler rendered 5 pages to `tmp/pdfs/quote-payment-schedule-review-final-*.png`.
 - The same visual-tool blocker remains: rendering completed, but the inspection tool could not open a PNG because the Windows sandbox helper reported `helper_unknown_error: setup refresh had errors`. Poppler again reported non-fatal missing display fonts for Symbol and ArialUnicode.
+## Schedule pagination correction (2026-08-30)
+
+The earlier follow-up report overstated the schedule fix: the live renderer still used a fixed `y -= 20` row advance and did not repeat the schedule columns on continuation pages. This correction replaces that code path with `drawScheduleHeader`, measures each wrapped description before drawing, reserves `footerSafetyY = 112`, and advances by the measured row height. Each continuation page draws `PAYMENT SCHEDULE CONTINUED` (or its invoice equivalent) plus `DESCRIPTION`, `PERCENT`, `AMOUNT`, and `DUE DATE`.
+
+- Per-page PDF-content regression decodes each continuation page and requires all four schedule-only headers there; it also verifies all 20 long schedule descriptions.
+- `npx --yes deno test --allow-env --allow-net supabase/functions/order-document/pdf.test.ts supabase/functions/order-document/index.test.ts`: PASS (7 tests).
+- `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
+- Corrected fixture SHA-256: `E22D69CC419AF9960BB7FE4CFA0E8F04D3BB23D6836AB268C4307D8CC6BD7584`; Poppler rendered 5 pages.
+- Visual inspection remains blocked by `helper_unknown_error: setup refresh had errors` when opening rendered PNGs. Poppler completed with its non-fatal Symbol/ArialUnicode display-font notices.
