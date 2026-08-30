@@ -50,3 +50,11 @@ A schedule description taller than a single page is now streamed in measured wra
 - `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
 - Tall-row fixture SHA-256: `CCF2B86754857EF6516303898DC8BA3304D21A97B960EFBD7F61B9ADBB7B0A6B`; Poppler rendered 3 pages.
 - Visual inspection remains blocked by the Windows sandbox helper (`helper_unknown_error: setup refresh had errors`); Poppler rendered successfully with non-fatal Symbol/ArialUnicode display-font notices.
+## Footer-coordinate regression strengthening (2026-08-30)
+
+The schedule pagination math is now exposed as production-used helpers for row height, segment capacity, footer boundary, continuation content start, and header consumption. The tall-row test simulates the exact continuation-header path with these values and asserts every segment draw start and end remains at or above `SCHEDULE_FOOTER_SAFETY_Y`. Continuation-page PDF assertions now also require the formatted due date `15 Sept 2026` alongside the schedule headers and repeated metadata.
+
+- `npx --yes deno test --allow-env --allow-net supabase/functions/order-document/pdf.test.ts supabase/functions/order-document/index.test.ts`: PASS (9 tests).
+- `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
+- Footer-safety fixture SHA-256: `870CA806B7BE61E7E3E4BA1997433BC8917C4FFAEFECE3EF66A180F16BB4A449`; Poppler rendered 3 pages.
+- Visual inspection remains blocked by the Windows sandbox helper (`helper_unknown_error: setup refresh had errors`); Poppler rendering completed with non-fatal Symbol/ArialUnicode display-font notices.

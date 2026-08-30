@@ -3,7 +3,16 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildOrderPdf, filenameForOrderDocument, splitText } from "./pdf.ts";
+import {
+  buildOrderPdf,
+  filenameForOrderDocument,
+  SCHEDULE_CONTENT_START_Y,
+  SCHEDULE_FOOTER_SAFETY_Y,
+  SCHEDULE_HEADER_HEIGHT,
+  scheduleRowHeight,
+  scheduleSegmentLineCapacity,
+  splitText,
+} from "./pdf.ts";
 async function extractPdfText(document: PDFDocument) {
   const context = document.context as unknown as {
     enumerateIndirectObjects(): Iterable<
@@ -230,6 +239,7 @@ Deno.test("paginates wrapped schedule rows with repeated headers and preserves f
     for (const header of ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"]) {
       assert(page.includes(header));
     }
+    assert(page.includes("15 Sept 2026"));
   }
   assert(text.includes("Subtotal"));
   assert(text.includes("Discount"));
@@ -330,7 +340,42 @@ Deno.test("streams a schedule description taller than a page without footer coll
     for (const header of ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"]) {
       assert(page.includes(header));
     }
+    assert(page.includes("15 Sept 2026"));
     assert(page.includes("100%"));
     assert(page.includes("$1,100.00"));
   }
+});
+
+Deno.test("keeps every tall schedule segment above the footer safety boundary", async () => {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const descriptionLines = splitText(
+    Array.from(
+      { length: 180 },
+      (_, index) => `TallScheduleToken${String(index + 1).padStart(3, "0")}`,
+    ).join(" "),
+    font,
+    8.5,
+    245,
+  );
+  const continuationContentY = SCHEDULE_CONTENT_START_Y;
+  const scheduleHeaderHeight = SCHEDULE_HEADER_HEIGHT;
+  let y = continuationContentY - scheduleHeaderHeight;
+  let remaining = [...descriptionLines];
+  let segments = 0;
+  while (remaining.length) {
+    if (y - scheduleRowHeight(remaining.length) < SCHEDULE_FOOTER_SAFETY_Y) {
+      y = continuationContentY - scheduleHeaderHeight;
+    }
+    const capacity = scheduleSegmentLineCapacity(y);
+    assert(capacity >= 1);
+    const segment = remaining.splice(0, capacity);
+    const drawStartY = y;
+    const drawEndY = y - scheduleRowHeight(segment.length);
+    assert(drawStartY >= SCHEDULE_FOOTER_SAFETY_Y);
+    assert(drawEndY >= SCHEDULE_FOOTER_SAFETY_Y);
+    y = drawEndY;
+    segments++;
+  }
+  assert(segments >= 2);
 });

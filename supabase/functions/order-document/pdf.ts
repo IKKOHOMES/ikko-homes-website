@@ -42,12 +42,32 @@ export type OrderPdfInput = {
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 42;
+export const SCHEDULE_CONTENT_START_Y = PAGE_HEIGHT - 135;
+export const SCHEDULE_HEADER_HEIGHT = 31;
 const charcoal = rgb(0.14, 0.13, 0.12);
 const muted = rgb(0.37, 0.34, 0.31);
 const orange = rgb(0.945, 0.35, 0.212);
 const cream = rgb(0.969, 0.957, 0.937);
 const white = rgb(1, 1, 1);
 const logoPath = "site-assets/brand/ikko-logo-header.png";
+export const SCHEDULE_FOOTER_SAFETY_Y = 112;
+const SCHEDULE_LINE_HEIGHT = 11;
+const SCHEDULE_ROW_TOP_PADDING = 13;
+const SCHEDULE_MIN_ROW_HEIGHT = 24;
+
+export function scheduleRowHeight(descriptionLineCount: number) {
+  return Math.max(
+    SCHEDULE_MIN_ROW_HEIGHT,
+    descriptionLineCount * SCHEDULE_LINE_HEIGHT + SCHEDULE_ROW_TOP_PADDING,
+  );
+}
+
+export function scheduleSegmentLineCapacity(y: number) {
+  return Math.floor(
+    (y - SCHEDULE_FOOTER_SAFETY_Y - SCHEDULE_ROW_TOP_PADDING) /
+      SCHEDULE_LINE_HEIGHT,
+  );
+}
 
 export function filenameForOrderDocument(reference: string) {
   const safeReference =
@@ -492,7 +512,7 @@ export async function buildOrderPdf(
       font: bold,
       color: charcoal,
     });
-    y = PAGE_HEIGHT - 135;
+    y = SCHEDULE_CONTENT_START_Y;
   };
   if (y < 255) newContentPage();
   page.drawLine({
@@ -542,8 +562,8 @@ export async function buildOrderPdf(
     ? input.paymentSchedule
     : (input.invoiceMilestone ? [input.invoiceMilestone] : []);
   if (schedule?.length) {
-    const footerSafetyY = 112;
-    const scheduleHeaderHeight = 31;
+    const footerSafetyY = SCHEDULE_FOOTER_SAFETY_Y;
+    const scheduleHeaderHeight = SCHEDULE_HEADER_HEIGHT;
     const drawScheduleHeader = (continued = false) => {
       page.drawText(
         continued
@@ -578,27 +598,24 @@ export async function buildOrderPdf(
         245,
       );
       while (remainingDescriptionLines.length) {
-        const fullRowHeight = Math.max(
-          24,
-          remainingDescriptionLines.length * 11 + 13,
+        const fullRowHeight = scheduleRowHeight(
+          remainingDescriptionLines.length,
         );
         if (y - fullRowHeight < footerSafetyY) {
           newContentPage();
           drawScheduleHeader(true);
         }
-        let availableLineCount = Math.floor(
-          (y - footerSafetyY - 13) / 11,
-        );
+        let availableLineCount = scheduleSegmentLineCapacity(y);
         if (availableLineCount < 1) {
           newContentPage();
           drawScheduleHeader(true);
-          availableLineCount = Math.floor((y - footerSafetyY - 13) / 11);
+          availableLineCount = scheduleSegmentLineCapacity(y);
         }
         const descriptionLines = remainingDescriptionLines.splice(
           0,
           availableLineCount,
         );
-        const rowHeight = Math.max(24, descriptionLines.length * 11 + 13);
+        const rowHeight = scheduleRowHeight(descriptionLines.length);
         page.drawLine({
           start: { x: MARGIN, y },
           end: { x: PAGE_WIDTH - MARGIN, y },
