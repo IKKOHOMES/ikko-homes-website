@@ -130,16 +130,16 @@ begin
   if v_order.id is null then raise exception 'Order is required.'; end if;
   select id, total into v_quote from public.quotes where id = p_quote_id and order_id = p_order_id and status = 'confirmed' for update;
   if not found then raise exception 'A confirmed quote is required.'; end if;
-  perform 1 from public.payment_plan_instalments where order_id = p_order_id for update;
+  perform 1 from public.payment_plan_instalments where order_id = p_order_id order by id for update;
   if exists (
     select 1 from jsonb_array_elements(p_instalments) e
     where nullif(e->>'id', '') is not null
-    group by e->>'id' having count(*) > 1
+    group by (e->>'id')::uuid having count(*) > 1
   ) then raise exception 'Payment plan instalment IDs must be unique.'; end if;
   if exists (
     select 1 from public.payment_plan_instalments p
     where p.order_id = p_order_id and p.status <> 'draft'
-      and not exists (select 1 from jsonb_array_elements(p_instalments) e where e->>'id' = p.id::text)
+      and not exists (select 1 from jsonb_array_elements(p_instalments) e where nullif(e->>'id', '')::uuid = p.id)
   ) then raise exception 'Issued or paid instalments cannot be removed.'; end if;
 
   for v_input in select * from jsonb_to_recordset(p_instalments) as x(id text, label text, percentage numeric, amount numeric, "dueOn" date, "internalNote" text) loop
@@ -152,10 +152,10 @@ begin
   -- Only draft rows can disappear.  Issued/paid rows and their invoice links stay intact.
   delete from public.invoices i
   where i.order_id = p_order_id and i.status = 'draft'
-    and not exists (select 1 from jsonb_array_elements(p_instalments) e where e->>'id' = i.payment_plan_instalment_id::text);
+    and not exists (select 1 from jsonb_array_elements(p_instalments) e where nullif(e->>'id', '')::uuid = i.payment_plan_instalment_id);
   delete from public.payment_plan_instalments p
   where p.order_id = p_order_id and p.status = 'draft'
-    and not exists (select 1 from jsonb_array_elements(p_instalments) e where e->>'id' = p.id::text);
+    and not exists (select 1 from jsonb_array_elements(p_instalments) e where nullif(e->>'id', '')::uuid = p.id);
 
   for v_input in select * from jsonb_to_recordset(p_instalments) as x(id text, label text, percentage numeric, amount numeric, "dueOn" date, "internalNote" text) loop
     v_sequence := v_sequence + 1;
@@ -177,7 +177,7 @@ begin
           raise exception 'Issued or paid instalments cannot be changed.';
         end if;
         select * into v_invoice from public.invoices where payment_plan_instalment_id = v_instalment.id for update;
-        if not found or v_invoice.status not in ('issued', 'paid', 'overdue') then raise exception 'Immutable instalment invoice is unavailable.'; end if;
+        if not found or v_invoice.status not in ('issued', 'paid') then raise exception 'Immutable instalment invoice is unavailable.'; end if;
         id := v_invoice.id; invoice_number := v_invoice.invoice_number; instalment_id := v_instalment.id; status := v_invoice.status; return next;
         continue;
       end if;
@@ -204,21 +204,25 @@ declare
   v_invoice public.invoices;
   v_instalment public.payment_plan_instalments;
   v_order_status public.order_status;
+  v_order_id uuid;
   v_note text := coalesce(nullif(trim(p_internal_note), ''), '');
 begin
   perform public.assert_payment_plan_admin();
+  -- Common lock order with schedule replacement: order, full schedule, invoice.
+  select order_id into v_order_id from public.invoices where id = p_invoice_id;
+  if not found then raise exception 'An issued payment-plan invoice is required.'; end if;
+  perform 1 from public.orders where id = v_order_id for update;
+  if not found then raise exception 'An issued payment-plan invoice is required.'; end if;
+  perform 1 from public.payment_plan_instalments where order_id = v_order_id order by id for update;
   select * into v_invoice from public.invoices where id = p_invoice_id for update;
   if not found or v_invoice.payment_plan_instalment_id is null then raise exception 'An issued payment-plan invoice is required.'; end if;
-  perform 1 from public.orders where id = v_invoice.order_id for update;
-  if not found then raise exception 'An issued payment-plan invoice is required.'; end if;
-  perform 1 from public.payment_plan_instalments where order_id = v_invoice.order_id for update;
   select * into v_instalment from public.payment_plan_instalments where id = v_invoice.payment_plan_instalment_id and order_id = v_invoice.order_id for update;
   if not found then raise exception 'An issued payment-plan invoice is required.'; end if;
   if v_invoice.status = 'paid' and v_instalment.status = 'paid' then
     select status into v_order_status from public.orders where id = v_invoice.order_id;
     id := v_invoice.id; invoice_number := v_invoice.invoice_number; instalment_id := v_instalment.id; status := 'paid'; order_status := v_order_status; return next; return;
   end if;
-  if v_invoice.status not in ('issued', 'overdue') or v_instalment.status not in ('issued', 'overdue') then raise exception 'An issued payment-plan invoice is required.'; end if;
+  if v_invoice.status <> 'issued' or v_instalment.status not in ('issued', 'overdue') then raise exception 'An issued payment-plan invoice is required.'; end if;
 
   update public.invoices set status = 'paid', paid_at = coalesce(p_paid_at, now()) where id = v_invoice.id;
   update public.payment_plan_instalments set status = 'paid', paid_at = coalesce(p_paid_at, now()) where id = v_instalment.id;

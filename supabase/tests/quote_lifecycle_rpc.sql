@@ -51,7 +51,7 @@ begin
     perform public.replace_payment_plan_and_sync_invoices(v_order, v_quote_v2, jsonb_build_array(
       jsonb_build_object('id', v_issued_instalment, 'label', 'Deposit', 'percentage', 50, 'amount', 500, 'dueOn', current_date, 'internalNote', ''),
       jsonb_build_object('id', v_draft_instalment, 'label', 'Balance one', 'percentage', 25, 'amount', 250, 'dueOn', current_date + 30, 'internalNote', ''),
-      jsonb_build_object('id', v_draft_instalment, 'label', 'Balance two', 'percentage', 25, 'amount', 250, 'dueOn', current_date + 30, 'internalNote', '')
+      jsonb_build_object('id', upper(v_draft_instalment::text), 'label', 'Balance two', 'percentage', 25, 'amount', 250, 'dueOn', current_date + 30, 'internalNote', '')
     ));
     raise exception 'duplicate schedule IDs were accepted';
   exception when others then
@@ -74,7 +74,9 @@ begin
   end if;
 
   perform public.issue_payment_plan_invoice(v_order, v_draft_invoice);
+  -- Concurrency proof: every mark-paid call takes the same order → schedule (id order) → invoice locks, so a second final payment waits, re-reads the now-paid schedule, then alone completes the order.
   update public.payment_plan_instalments set status = 'overdue' where id = v_draft_instalment;
+  if (select status from public.invoices where id = v_draft_invoice) <> 'issued' then raise exception 'overdue is an instalment state; invoice must remain issued'; end if;
   perform public.mark_payment_plan_invoice_paid(v_draft_invoice, now(), 'overdue balance received');
   if (select status from public.orders where id = v_order) <> 'completed'
     or exists (select 1 from public.payment_plan_instalments where order_id = v_order and status <> 'paid')
