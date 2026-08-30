@@ -571,43 +571,72 @@ export async function buildOrderPdf(
     if (y - scheduleHeaderHeight < footerSafetyY) newContentPage();
     drawScheduleHeader();
     for (const item of schedule) {
-      const descriptionLines = splitText(item.description, sans, 8.5, 245);
-      const descriptionHeight = descriptionLines.length * 11;
-      const rowHeight = Math.max(24, descriptionHeight + 13);
-      if (y - rowHeight < footerSafetyY) {
-        newContentPage();
-        drawScheduleHeader(true);
-      }
-      page.drawLine({
-        start: { x: MARGIN, y },
-        end: { x: PAGE_WIDTH - MARGIN, y },
-        thickness: .5,
-        color: muted,
-      });
-      y -= 13;
-      descriptionLines.forEach((part, index) =>
-        page.drawText(part, {
-          x: MARGIN,
-          y: y - index * 11,
+      const remainingDescriptionLines = splitText(
+        item.description,
+        sans,
+        8.5,
+        245,
+      );
+      while (remainingDescriptionLines.length) {
+        const fullRowHeight = Math.max(
+          24,
+          remainingDescriptionLines.length * 11 + 13,
+        );
+        if (y - fullRowHeight < footerSafetyY) {
+          newContentPage();
+          drawScheduleHeader(true);
+        }
+        let availableLineCount = Math.floor(
+          (y - footerSafetyY - 13) / 11,
+        );
+        if (availableLineCount < 1) {
+          newContentPage();
+          drawScheduleHeader(true);
+          availableLineCount = Math.floor((y - footerSafetyY - 13) / 11);
+        }
+        const descriptionLines = remainingDescriptionLines.splice(
+          0,
+          availableLineCount,
+        );
+        const rowHeight = Math.max(24, descriptionLines.length * 11 + 13);
+        page.drawLine({
+          start: { x: MARGIN, y },
+          end: { x: PAGE_WIDTH - MARGIN, y },
+          thickness: .5,
+          color: muted,
+        });
+        y -= 13;
+        descriptionLines.forEach((part, index) =>
+          page.drawText(part, {
+            x: MARGIN,
+            y: y - index * 11,
+            size: 8.5,
+            font: sans,
+            color: charcoal,
+          })
+        );
+        // Repeat payment metadata for every description segment so a row that
+        // spans pages remains unambiguous without truncating its description.
+        page.drawText(`${item.percentage}%`, {
+          x: 300,
+          y,
           size: 8.5,
           font: sans,
-          color: charcoal,
-        })
-      );
-      page.drawText(`${item.percentage}%`, {
-        x: 300,
-        y,
-        size: 8.5,
-        font: sans,
-      });
-      page.drawText(amount(item.amount), { x: 390, y, size: 8.5, font: bold });
-      page.drawText(humanDate(item.dueOn), {
-        x: 485,
-        y,
-        size: 7.5,
-        font: sans,
-      });
-      y -= rowHeight - 13;
+        });
+        page.drawText(amount(item.amount), {
+          x: 390,
+          y,
+          size: 8.5,
+          font: bold,
+        });
+        page.drawText(humanDate(item.dueOn), {
+          x: 485,
+          y,
+          size: 7.5,
+          font: sans,
+        });
+        y -= rowHeight - 13;
+      }
     }
   }
   const note = isQuote

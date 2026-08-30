@@ -41,3 +41,12 @@ The earlier follow-up report overstated the schedule fix: the live renderer stil
 - `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
 - Corrected fixture SHA-256: `E22D69CC419AF9960BB7FE4CFA0E8F04D3BB23D6836AB268C4307D8CC6BD7584`; Poppler rendered 5 pages.
 - Visual inspection remains blocked by `helper_unknown_error: setup refresh had errors` when opening rendered PNGs. Poppler completed with its non-fatal Symbol/ArialUnicode display-font notices.
+## Tall schedule-row robustness (2026-08-30)
+
+A schedule description taller than a single page is now streamed in measured wrapped-line segments. After every continuation page/header, the renderer recalculates the usable line capacity above `footerSafetyY`; it repeats the payment percentage, amount, and due date for every segment. This prevents footer-band drawing without truncating the description.
+
+- New 180-token tall-description regression forces at least two schedule continuation pages, verifies all tokens survive in decoded PDF content, and requires the full schedule headers plus repeated `100%` and `$1,100.00` metadata on every continuation page.
+- `npx --yes deno test --allow-env --allow-net supabase/functions/order-document/pdf.test.ts supabase/functions/order-document/index.test.ts`: PASS (8 tests).
+- `npx --yes deno check supabase/functions/order-document/index.ts`: PASS.
+- Tall-row fixture SHA-256: `CCF2B86754857EF6516303898DC8BA3304D21A97B960EFBD7F61B9ADBB7B0A6B`; Poppler rendered 3 pages.
+- Visual inspection remains blocked by the Windows sandbox helper (`helper_unknown_error: setup refresh had errors`); Poppler rendered successfully with non-fatal Symbol/ArialUnicode display-font notices.

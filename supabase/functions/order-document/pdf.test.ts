@@ -283,3 +283,54 @@ Deno.test("renders invoice milestone fields alongside the financial summary", as
     assert(text.includes(value));
   }
 });
+
+Deno.test("streams a schedule description taller than a page without footer collision", async () => {
+  Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
+  const tokens = Array.from(
+    { length: 180 },
+    (_, index) => `TallScheduleToken${String(index + 1).padStart(3, "0")}`,
+  );
+  const result = await buildOrderPdf({
+    documentType: "quote",
+    number: "IKKO2026080101",
+    issuedOn: "2026-08-30",
+    customer: {
+      name: "Tall Row Customer",
+      email: "tall@example.com",
+      phone: "0400 000 000",
+      address: "69 Patricia Loop",
+    },
+    studio: {
+      address: "69 Patricia Loop",
+      email: "accounts@ikkohomes.com",
+      phone: "0490 384 021",
+    },
+    lines: [{ description: "Joinery package", quantity: 1, unitPrice: 1000 }],
+    subtotal: 1000,
+    discountTotal: 0,
+    gstTotal: 100,
+    totalDue: 1100,
+    paymentSchedule: [{
+      description: tokens.join(" "),
+      percentage: 100,
+      amount: 1100,
+      dueOn: "2026-09-15",
+    }],
+  });
+  const document = await PDFDocument.load(result.bytes);
+  const text = await extractPdfText(document);
+  const pages = await extractPdfPageText(document);
+  assert(document.getPageCount() >= 3);
+  for (const token of tokens) assert(text.includes(token));
+  const continuationPages = pages.filter((page) =>
+    page.includes("PAYMENT SCHEDULE CONTINUED")
+  );
+  assert(continuationPages.length >= 2);
+  for (const page of continuationPages) {
+    for (const header of ["DESCRIPTION", "PERCENT", "AMOUNT", "DUE DATE"]) {
+      assert(page.includes(header));
+    }
+    assert(page.includes("100%"));
+    assert(page.includes("$1,100.00"));
+  }
+});
