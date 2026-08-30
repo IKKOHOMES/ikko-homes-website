@@ -17,7 +17,7 @@ export type AdminOrderDetail = {
   drawings: Array<{ fileName: string; signedUrl: string | null }>;
   quotes: EditableQuote[];
   paymentPlan: PaymentPlanInstalment[];
-  invoices: Array<{ id: string; number: string; total: number; status: InvoiceStatus; dueOn: string | null; paidAt: string | null }>;
+  invoices: Array<{ id: string; number: string; total: number; status: InvoiceStatus; dueOn: string | null; paidAt: string | null; paymentPlanInstalmentId: string | null }>;
 };
 type OrderRow = {
   id: string;
@@ -58,13 +58,13 @@ type DetailRow = Omit<OrderRow, 'customers' | 'order_lines' | 'quotes' | 'invoic
   customers: { id: string; first_name: string; last_name: string; email: string; phone: string; address: string } | null;
   order_lines: Array<{ id: string; line_kind: 'furniture' | 'cabinetry'; display_name: string; unit_price: number | string | null; quantity: number; finish: string | null; cabinetry_drawings: Array<{ storage_path: string; file_name: string }> }>;
   quotes: Array<{ id: string; version: number; status: 'draft' | 'confirmed'; quote_number: string | null; subtotal: number | string | null; discount_total: number | string | null; gst_total: number | string | null; total: number | string; expires_on: string; internal_note: string; created_at: string; quote_lines: Array<{ id: string; display_name: string; unit_price: number | string; quantity: number; is_tbd: boolean }> }> ;
-  invoices: Array<{ id: string; invoice_number: string; total: number | string; status: InvoiceStatus; due_on: string | null; paid_at: string | null }>;
+  invoices: Array<{ id: string; invoice_number: string; total: number | string; status: InvoiceStatus; due_on: string | null; paid_at: string | null; payment_plan_instalment_id: string | null }>;
   payment_plan_instalments: Array<{ id: string; sequence: number; label: string; percentage: number | string | null; amount: number | string; due_on: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; internal_note: string; paid_at: string | null }>;
 };
 
 export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
   const client = getAdminSupabaseClient();
-  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(id, invoice_number, total, status, due_on, paid_at), quotes(id, version, status, quote_number, subtotal, discount_total, gst_total, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd)), payment_plan_instalments(id, sequence, label, percentage, amount, due_on, status, internal_note, paid_at)').eq('id', id).single();
+  const { data, error } = await client.from('orders').select('id, order_number, status, created_at, internal_note, customers(id, first_name, last_name, email, phone, address), order_lines(id, line_kind, display_name, unit_price, quantity, finish, cabinetry_drawings(storage_path, file_name)), invoices(id, invoice_number, total, status, due_on, paid_at, payment_plan_instalment_id), quotes(id, version, status, quote_number, subtotal, discount_total, gst_total, total, expires_on, internal_note, created_at, quote_lines(id, display_name, unit_price, quantity, is_tbd)), payment_plan_instalments(id, sequence, label, percentage, amount, due_on, status, internal_note, paid_at)').eq('id', id).single();
   if (error || !data) throw new Error('Unable to load the order.');
   const row = data as unknown as DetailRow;
   const order = mapAdminOrderRow(row);
@@ -79,7 +79,7 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
     internalNote: row.internal_note,
     lines: row.order_lines.map((line) => ({ id: line.id, name: line.display_name, kind: line.line_kind, unitPrice: line.unit_price === null ? null : Number(line.unit_price), quantity: line.quantity, finish: line.finish })),
     drawings,
-    invoices: (row.invoices ?? []).map((invoice) => ({ id: invoice.id, number: invoice.invoice_number, total: Number(invoice.total), status: invoice.status, dueOn: invoice.due_on, paidAt: invoice.paid_at })),
+    invoices: (row.invoices ?? []).map((invoice) => ({ id: invoice.id, number: invoice.invoice_number, total: Number(invoice.total), status: invoice.status, dueOn: invoice.due_on, paidAt: invoice.paid_at, paymentPlanInstalmentId: invoice.payment_plan_instalment_id })),
     paymentPlan: (row.payment_plan_instalments ?? []).sort((a, b) => a.sequence - b.sequence).map((line) => ({ id: line.id, label: line.label, percentage: line.percentage === null ? 0 : Number(line.percentage), amount: Number(line.amount), dueOn: line.due_on, status: line.status, internalNote: line.internal_note, paidAt: line.paid_at })),
     quotes: row.quotes.map((quote) => ({ id: quote.id, orderId: row.id, version: quote.version, status: quote.status, subtotal: quote.subtotal === null ? undefined : Number(quote.subtotal), discountTotal: quote.discount_total === null ? 0 : Number(quote.discount_total), gstTotal: quote.gst_total === null ? undefined : Number(quote.gst_total), total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at, lines: (quote.quote_lines ?? []).map((line) => ({ id: line.id, displayName: line.display_name, unitPrice: Number(line.unit_price), quantity: line.quantity, isTbd: line.is_tbd })) })).sort((a, b) => b.version - a.version),
   };
