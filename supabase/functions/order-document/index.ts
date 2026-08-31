@@ -102,10 +102,12 @@ export async function loadAuthorisedOrderDocument(
   documentType: DocumentType,
   documentId: string,
   callerClient: SupabaseClient,
+  studioAbn?: string | null,
 ): Promise<LoadedOrderDocument> {
   const { data, error } = await callerClient.rpc('load_authorised_order_document', {
     p_document_type: documentType,
     p_document_id: documentId,
+    p_studio_abn: studioAbn?.trim() || null,
   });
   if (error || !data) throw new Error(error?.message || 'Unable to load the document.');
   const payload = asRecord(firstRow(data));
@@ -347,6 +349,7 @@ if (import.meta.main) {
         documentType,
         documentId,
         callerClient,
+        Deno.env.get('IKKO_HOMES_ABN'),
       );
       const document = await buildOrderPdf(loaded.input);
       if (action === "download") {

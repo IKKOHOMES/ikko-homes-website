@@ -8,8 +8,7 @@ function roundPercentage(value: number) { return Math.round((value + Number.EPSI
 function requireScheduleEdit(lines: PaymentPlanDraft[], index: number, value: number, quoteTotal: number) {
   if (!Number.isInteger(index) || index < 0 || index >= lines.length || !Number.isFinite(value) || value < 0 || !Number.isFinite(quoteTotal) || quoteTotal <= 0) throw new Error('Enter a valid non-negative payment value.');
 }
-function balanceFinalLine(lines: PaymentPlanDraft[], index: number, quoteTotal: number): PaymentPlanDraft[] {
-  const finalIndex = lines.length - 1;
+function balanceFinalLine(lines: PaymentPlanDraft[], quoteTotal: number, finalIndex = lines.length - 1): PaymentPlanDraft[] {
   if (!lines.length) return lines;
   const quoteCents = toCents(quoteTotal);
   const otherCents = lines.reduce((sum, line, lineIndex) => lineIndex === finalIndex ? sum : sum + toCents(line.amount), 0);
@@ -28,19 +27,19 @@ export function calculateQuoteTotals(lines: QuoteLine[], discountTotal: number) 
   return { subtotal: fromCents(subtotalCents), discountTotal: fromCents(discountCents), gstTotal: fromCents(gstCents), total: fromCents(subtotalCents - discountCents + gstCents) };
 }
 
-export function updateSchedulePercent(lines: PaymentPlanDraft[], index: number, percentage: number, quoteTotal: number): PaymentPlanDraft[] {
+export function updateSchedulePercent(lines: PaymentPlanDraft[], index: number, percentage: number, quoteTotal: number, balanceIndex?: number): PaymentPlanDraft[] {
   requireScheduleEdit(lines, index, percentage, quoteTotal);
   const amountCents = Math.round(toCents(quoteTotal) * percentage / 100);
   const canonicalPercentage = roundPercentage((amountCents / toCents(quoteTotal)) * 100);
   const next = lines.map((line, lineIndex) => lineIndex === index ? { ...line, percentage: canonicalPercentage, amount: fromCents(amountCents) } : { ...line });
-  return balanceFinalLine(next, index, quoteTotal);
+  return balanceFinalLine(next, quoteTotal, balanceIndex);
 }
 
-export function updateScheduleAmount(lines: PaymentPlanDraft[], index: number, amount: number, quoteTotal: number): PaymentPlanDraft[] {
+export function updateScheduleAmount(lines: PaymentPlanDraft[], index: number, amount: number, quoteTotal: number, balanceIndex?: number): PaymentPlanDraft[] {
   requireScheduleEdit(lines, index, amount, quoteTotal);
   const amountCents = toCents(amount); const quoteCents = toCents(quoteTotal);
   const next = lines.map((line, lineIndex) => lineIndex === index ? { ...line, amount: fromCents(amountCents), percentage: roundPercentage((amountCents / quoteCents) * 100) } : { ...line });
-  return balanceFinalLine(next, index, quoteTotal);
+  return balanceFinalLine(next, quoteTotal, balanceIndex);
 }
 
 export function validatePaymentPlan(instalments: PaymentPlanDraft[], quoteTotal: number): PaymentPlanValidation {

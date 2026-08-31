@@ -52,6 +52,21 @@ test('keeps overdue rows immutable while leaving a draft row editable', async ()
   expect(screen.getAllByRole('button', { name: 'Remove' })[0]).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Move instalment 2 up' })).toBeDisabled();
 });
+test('balances an edited draft against another draft without changing a final immutable milestone', async () => {
+  const user = userEvent.setup();
+  render(<PaymentPlanEditor quoteTotal={1000} instalments={[
+    { id: 'plan-1', label: 'Deposit', percentage: 20, amount: 200, dueOn: '2026-09-01', internalNote: '', status: 'draft' },
+    { id: 'plan-2', label: 'Balance', percentage: 30, amount: 300, dueOn: '2026-10-01', internalNote: '', status: 'draft' },
+    { id: 'plan-3', label: 'Final immutable', percentage: 50, amount: 500, dueOn: '2026-11-01', internalNote: '', status: 'issued' },
+  ]} onSave={vi.fn()} onSync={vi.fn()} />);
+
+  const percentage = screen.getByRole('spinbutton', { name: 'Instalment 1 percent' });
+  await user.clear(percentage);
+  await user.type(percentage, '25');
+
+  expect(screen.getByRole('spinbutton', { name: 'Instalment 2 amount' })).toHaveValue(250);
+  expect(screen.getByRole('spinbutton', { name: 'Instalment 3 amount' })).toHaveValue(500);
+});
 test('keeps returned persisted IDs for the next save without waiting for a reload', async () => {
   const onSave = vi.fn()
     .mockResolvedValueOnce([{ id: 'persisted-deposit', label: 'Deposit', percentage: 100, amount: 1000, dueOn: '2026-09-01', internalNote: '' }])

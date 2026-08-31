@@ -35,31 +35,31 @@ begin
     values ('DOC-OWNER-' || gen_random_uuid(), v_owner_customer, 'quoted') returning id into v_owner_order;
   insert into public.orders (order_number, customer_id, status)
     values ('DOC-GUEST-' || gen_random_uuid(), v_guest_customer, 'quoted') returning id into v_guest_order;
-  insert into public.quotes (order_id, version, status, total, expires_on)
-    values (v_owner_order, 1, 'confirmed', 110, current_date + 30) returning id into v_owner_quote;
-  insert into public.quotes (order_id, version, status, total, expires_on)
-    values (v_guest_order, 1, 'confirmed', 110, current_date + 30) returning id into v_guest_quote;
+  insert into public.quotes (order_id, version, status, quote_number, total, expires_on)
+    values (v_owner_order, 1, 'confirmed', 'IKKO-OWNER-' || replace(v_owner_user::text, '-', ''), 110, current_date + 30) returning id into v_owner_quote;
+  insert into public.quotes (order_id, version, status, quote_number, total, expires_on)
+    values (v_guest_order, 1, 'confirmed', 'IKKO-GUEST-' || replace(v_guest_customer::text, '-', ''), 110, current_date + 30) returning id into v_guest_quote;
   insert into public.quote_lines (quote_id, display_name, unit_price, quantity, is_tbd)
     values (v_owner_quote, 'Owner quote', 100, 1, false), (v_guest_quote, 'Guest quote', 100, 1, false);
 
   -- Authenticated explicit admin may read a guest order with auth_user_id null.
   perform set_config('request.jwt.claim.role', 'authenticated', true);
   perform set_config('request.jwt.claim.sub', v_admin_user::text, true);
-  v_payload := public.load_authorised_order_document('quote', v_guest_quote);
+  v_payload := public.load_authorised_order_document('quote', v_guest_quote, null);
   if v_payload #>> '{orderId}' <> v_guest_order::text then raise exception 'explicit admin could not load guest order'; end if;
 
   -- A non-admin cannot access a guest order, and an owner can access only own.
   perform set_config('request.jwt.claim.sub', v_other_user::text, true);
   begin
-    perform public.load_authorised_order_document('quote', v_guest_quote);
+    perform public.load_authorised_order_document('quote', v_guest_quote, null);
     raise exception 'non-admin loaded guest order';
   exception when others then
     if position('Unauthorised.' in sqlerrm) = 0 then raise; end if;
   end;
   perform set_config('request.jwt.claim.sub', v_owner_user::text, true);
-  perform public.load_authorised_order_document('quote', v_owner_quote);
+  perform public.load_authorised_order_document('quote', v_owner_quote, null);
   begin
-    perform public.load_authorised_order_document('quote', v_guest_quote);
+    perform public.load_authorised_order_document('quote', v_guest_quote, null);
     raise exception 'customer loaded another order';
   exception when others then
     if position('Unauthorised.' in sqlerrm) = 0 then raise; end if;
@@ -68,7 +68,7 @@ begin
   -- The old spoofable signature is absent; PostgREST can expose only the
   -- two-argument function and caller identity comes from its JWT claims.
   if to_regprocedure('public.load_authorised_order_document(text,uuid,uuid,boolean)') is not null
-    or to_regprocedure('public.load_authorised_order_document(text,uuid)') is null then
+    or to_regprocedure('public.load_authorised_order_document(text,uuid,text)') is null then
     raise exception 'document RPC signature still permits caller spoofing';
   end if;
 end;

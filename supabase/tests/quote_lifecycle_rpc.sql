@@ -80,7 +80,7 @@ begin
     raise exception 'schedule revision linkage changed immutable data or missed the draft row';
   end if;
   -- First document generation freezes the latest same-revision schedule.
-  v_document := public.load_authorised_order_document('quote', v_quote_v2);
+  v_document := public.load_authorised_order_document('quote', v_quote_v2, null);
   perform public.replace_payment_plan_and_sync_invoices(v_order, v_quote_v2, jsonb_build_array(
     jsonb_build_object('id', v_issued_instalment, 'label', 'Deposit', 'percentage', 50, 'amount', 500, 'dueOn', current_date, 'internalNote', ''),
     jsonb_build_object('id', v_draft_instalment, 'label', 'Balance changed after release', 'percentage', 50, 'amount', 500, 'dueOn', current_date + 32, 'internalNote', 'later edit')

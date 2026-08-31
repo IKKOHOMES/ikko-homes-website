@@ -136,7 +136,7 @@ Deno.test('loads the final document payload through one authorisation-bounded RP
     from: () => { throw new Error('final document data must not be loaded through unbounded table queries'); },
     rpc: async (name: string, params: Record<string, unknown>) => {
       assertEquals(name, 'load_authorised_order_document');
-      assertEquals(params, { p_document_type: 'invoice', p_document_id: 'invoice-1' });
+      assertEquals(params, { p_document_type: 'invoice', p_document_id: 'invoice-1', p_studio_abn: null });
       return { data: {
         orderId: 'order-1', recipientEmail: 'client@example.com', customerAuthUserId: 'customer-1',
         input: { documentType: 'invoice', number: 'IKKO-1001', issuedOn: '2026-09-01', dueOn: '2026-10-01', invoiceStatus: 'issued', customer: { name: 'Aiko', email: 'client@example.com', phone: '0400', address: '1 Studio Lane' }, studio: { address: 'Studio', email: 'studio@example.com', phone: '0401', abn: null }, lines: [], subtotal: 100, discountTotal: 0, gstTotal: 10, totalDue: 110, invoiceMilestone: null },
@@ -165,7 +165,7 @@ Deno.test('does not send caller identity or privilege claims to the document RPC
   const admin = {
     rpc: async (name: string, params: Record<string, unknown>) => {
       assertEquals(name, 'load_authorised_order_document');
-      assertEquals(params, { p_document_type: 'quote', p_document_id: 'quote-1' });
+      assertEquals(params, { p_document_type: 'quote', p_document_id: 'quote-1', p_studio_abn: null });
       return { data: { orderId: 'order-1', recipientEmail: 'guest@example.com', customerAuthUserId: null, input: { documentType: 'quote', number: 'IKKO2026080001' } }, error: null };
     },
   } as unknown as SupabaseClient;
@@ -173,6 +173,16 @@ Deno.test('does not send caller identity or privilege claims to the document RPC
   await loadAuthorisedOrderDocument('quote', 'quote-1', admin);
 });
 
+Deno.test('passes a configured ABN to the authorised document RPC', async () => {
+  const admin = {
+    rpc: async (name: string, params: Record<string, unknown>) => {
+      assertEquals(name, 'load_authorised_order_document');
+      assertEquals(params, { p_document_type: 'quote', p_document_id: 'quote-1', p_studio_abn: '12 345 678 901' });
+      return { data: { orderId: 'order-1', recipientEmail: 'client@example.com', customerAuthUserId: 'customer-1', input: { documentType: 'quote', number: 'IKKO2026080001' } }, error: null };
+    },
+  } as unknown as SupabaseClient;
+  await loadAuthorisedOrderDocument('quote', 'quote-1', admin, '12 345 678 901');
+});
 Deno.test('accepts a guest order payload when the database has authorised the administrator', async () => {
   const admin = {
     rpc: async () => ({ data: { orderId: 'order-guest', recipientEmail: 'guest@example.com', customerAuthUserId: null, input: { documentType: 'invoice', number: 'IKKO-1002', invoiceStatus: 'issued' } }, error: null }),
