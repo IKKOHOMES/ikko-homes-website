@@ -73,22 +73,82 @@ begin
   end if;
 end;
 $$;
--- Customer invoice/line RLS lifecycle contract using PostgREST JWT claim GUCs.
-do $$
-declare v_owner uuid:=gen_random_uuid(); v_customer uuid; v_order uuid; v_issued uuid; v_paid uuid; v_draft uuid; v_void uuid;
+-- Customer invoice/line RLS lifecycle contract using the actual authenticated
+-- database role. Setup remains privileged in a temporary SECURITY DEFINER helper;
+-- assertions run after SET LOCAL ROLE so table policies are genuinely evaluated.
+create or replace function pg_temp.seed_invoice_rls_fixture()
+returns table(owner_id uuid, customer_id uuid, order_id uuid, issued_id uuid, paid_id uuid, draft_id uuid, void_id uuid, other_issued_id uuid)
+language plpgsql
+security definer
+set search_path = public, auth, pg_temp
+as $$
+declare
+  v_owner uuid := gen_random_uuid();
+  v_customer uuid;
+  v_order uuid;
+  v_other_owner uuid := gen_random_uuid();
+  v_other_customer uuid;
+  v_other_order uuid;
 begin
-  insert into auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
-  values (v_owner,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','rls-'||v_owner||'@example.test',crypt('password',gen_salt('bf')),now(),'{"provider":"email"}','{}',now(),now());
-  select id into v_customer from public.customers where auth_user_id=v_owner;
-  insert into public.orders(order_number,customer_id,status) values ('RLS-'||gen_random_uuid(),v_customer,'invoiced') returning id into v_order;
-  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-I-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'issued') returning id into v_issued;
-  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-P-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'paid') returning id into v_paid;
-  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-D-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'draft') returning id into v_draft;
-  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-V-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'void') returning id into v_void;
-  insert into public.invoice_lines(invoice_id,display_name,unit_price,quantity) values (v_issued,'Issued',100,1),(v_paid,'Paid',100,1),(v_draft,'Draft',100,1),(v_void,'Void',100,1);
-  perform set_config('request.jwt.claim.role','authenticated',true); perform set_config('request.jwt.claim.sub',v_owner::text,true);
-  if (select count(*) from public.invoices where id in(v_issued,v_paid,v_draft,v_void))<>2 or exists(select 1 from public.invoices where id in(v_draft,v_void)) then raise exception 'customer invoice RLS exposed draft or void'; end if;
-  if (select count(*) from public.invoice_lines where invoice_id in(v_issued,v_paid,v_draft,v_void))<>2 or exists(select 1 from public.invoice_lines where invoice_id in(v_draft,v_void)) then raise exception 'customer invoice-line RLS exposed draft or void'; end if;
+  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+  values (v_owner, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-' || v_owner || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{}', now(), now());
+  select id into v_customer from public.customers where auth_user_id = v_owner;
+  insert into public.orders(order_number, customer_id, status) values ('RLS-' || gen_random_uuid(), v_customer, 'invoiced') returning id into v_order;
+  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+  values (v_other_owner, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-other-' || v_other_owner || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{}', now(), now());
+  select id into v_other_customer from public.customers where auth_user_id = v_other_owner;
+  insert into public.orders(order_number, customer_id, status) values ('RLS-OTHER-' || gen_random_uuid(), v_other_customer, 'invoiced') returning id into v_other_order;
+  insert into public.invoices(invoice_number, order_id, customer_name, customer_email, customer_address, total, status)
+    values ('RLS-I-' || gen_random_uuid(), v_order, 'Owner', 'owner@example.test', '1 Policy Lane', 110, 'issued') returning id into issued_id;
+  insert into public.invoices(invoice_number, order_id, customer_name, customer_email, customer_address, total, status)
+    values ('RLS-P-' || gen_random_uuid(), v_order, 'Owner', 'owner@example.test', '1 Policy Lane', 110, 'paid') returning id into paid_id;
+  insert into public.invoices(invoice_number, order_id, customer_name, customer_email, customer_address, total, status)
+    values ('RLS-D-' || gen_random_uuid(), v_order, 'Owner', 'owner@example.test', '1 Policy Lane', 110, 'draft') returning id into draft_id;
+  insert into public.invoices(invoice_number, order_id, customer_name, customer_email, customer_address, total, status)
+    values ('RLS-V-' || gen_random_uuid(), v_order, 'Owner', 'owner@example.test', '1 Policy Lane', 110, 'void') returning id into void_id;
+  insert into public.invoices(invoice_number, order_id, customer_name, customer_email, customer_address, total, status)
+    values ('RLS-OTHER-I-' || gen_random_uuid(), v_other_order, 'Other', 'other@example.test', '2 Policy Lane', 110, 'issued') returning id into other_issued_id;
+  insert into public.invoice_lines(invoice_id, display_name, unit_price, quantity)
+    values (issued_id, 'Issued', 100, 1), (paid_id, 'Paid', 100, 1), (draft_id, 'Draft', 100, 1), (void_id, 'Void', 100, 1), (other_issued_id, 'Other', 100, 1);
+  owner_id := v_owner; customer_id := v_customer; order_id := v_order;
+  return next;
 end;
 $$;
+
+set local role authenticated;
+do $$
+declare
+  v_owner uuid;
+  v_customer uuid;
+  v_order uuid;
+  v_issued uuid;
+  v_paid uuid;
+  v_draft uuid;
+  v_void uuid;
+  v_other_issued uuid;
+  v_visible_invoices integer;
+  v_visible_lines integer;
+begin
+  select owner_id, customer_id, order_id, issued_id, paid_id, draft_id, void_id, other_issued_id
+    into v_owner, v_customer, v_order, v_issued, v_paid, v_draft, v_void, v_other_issued
+    from pg_temp.seed_invoice_rls_fixture();
+
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+
+  select count(*) into v_visible_invoices from public.invoices where id in (v_issued, v_paid, v_draft, v_void, v_other_issued);
+  if v_visible_invoices <> 2 or exists(select 1 from public.invoices where id in (v_draft, v_void, v_other_issued)) then
+    raise exception 'customer invoice RLS exposed draft or void';
+  end if;
+  select count(*) into v_visible_lines from public.invoice_lines where invoice_id in (v_issued, v_paid, v_draft, v_void);
+  if v_visible_lines <> 2 or exists(select 1 from public.invoice_lines where invoice_id in (v_draft, v_void, v_other_issued)) then
+    raise exception 'customer invoice-line RLS exposed draft or void';
+  end if;
+  if exists(select 1 from public.invoices where id in (v_issued, v_paid) and order_id <> v_order)
+     or exists(select 1 from public.invoice_lines where invoice_id in (v_issued, v_paid)
+       and invoice_id not in (v_issued, v_paid)) then
+    raise exception 'customer invoice RLS exposed another order';
+  end if;
+end;
+;
 rollback;

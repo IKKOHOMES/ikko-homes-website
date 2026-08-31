@@ -120,10 +120,6 @@ export async function saveQuote(input: QuoteSaveInput): Promise<string> {
   }
   const { error: linesError } = await client.from('quote_lines').insert(input.lines.map((line) => ({ quote_id: quoteId, display_name: line.displayName.trim(), unit_price: line.isTbd ? 0 : line.unitPrice, quantity: line.quantity, is_tbd: line.isTbd })));
   if (linesError) throw new Error('Unable to save quotation lines.');
-  if (!current.quote_number || quoteId !== current.id) {
-    const { error: numberError } = await client.rpc('ensure_quote_number', { p_quote_id: quoteId });
-    if (numberError) throw new Error('Unable to assign quotation number.');
-  }
   const { error: eventError } = await client.from('order_status_events').insert({ order_id: input.orderId, status: 'new', note: `Quotation v${version} saved.` });
   if (eventError) throw new Error('Unable to update order history.');
   return quoteId;

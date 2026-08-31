@@ -85,3 +85,20 @@ test('defines one independently managed cabinetry product for each style range',
   expect(sql).toContain('public reads active cabinetry products');
   expect(sql).toContain('admins manage cabinetry products');
 });
+
+test('preserves unknown-provenance release snapshots before forward cleanup', () => {
+  const sql = readFileSync('supabase/migrations/202608300010_final_release_integrity.sql', 'utf8');
+  const marker = sql.indexOf('update public.quotes q');
+  const cleanup = sql.indexOf('delete from public.quote_payment_schedule_snapshots');
+  expect(marker).toBeGreaterThan(-1);
+  expect(cleanup).toBeGreaterThan(marker);
+  expect(sql.slice(cleanup, cleanup + 700)).toContain('document_generated_at is not null');
+});
+
+test('runs invoice RLS assertions as authenticated with privileged fixture setup', () => {
+  const sql = readFileSync('supabase/tests/document_authorisation_rpc_integration.sql', 'utf8');
+  expect(sql).toContain('create or replace function pg_temp.seed_invoice_rls_fixture()');
+  expect(sql).toContain('security definer');
+  expect(sql).toContain('set local role authenticated;');
+  expect(sql).toContain('RLS-OTHER-I-');
+});

@@ -88,3 +88,36 @@ test('applies a reloaded issued status without discarding an active draft edit',
   expect(description).toHaveValue('Deposit updated');
   expect(description).toBeDisabled();
 });
+test('preserves a local no-ID addition and reorder while applying server updates to clean rows', async () => {
+  const user = userEvent.setup();
+  const initial = [
+    { id: 'plan-1', label: 'Deposit', percentage: 50, amount: 500, dueOn: '2026-09-01', internalNote: '', status: 'draft' as const },
+    { id: 'plan-2', label: 'Balance', percentage: 50, amount: 500, dueOn: '2026-10-01', internalNote: '', status: 'draft' as const },
+  ];
+  const view = render(<PaymentPlanEditor quoteTotal={1000} instalments={initial} onSave={vi.fn()} onSync={vi.fn()} />);
+  await user.click(screen.getByRole('button', { name: 'Add instalment' }));
+  await user.type(screen.getByRole('textbox', { name: 'Instalment 3 description' }), 'Local addition');
+  await user.click(screen.getByRole('button', { name: 'Move instalment 3 up' }));
+  await user.click(screen.getByRole('button', { name: 'Move instalment 2 up' }));
+
+  view.rerender(<PaymentPlanEditor quoteTotal={1000} instalments={[
+    { ...initial[1], label: 'Server balance updated' },
+    { ...initial[0], label: 'Server deposit updated' },
+  ]} onSave={vi.fn()} onSync={vi.fn()} />);
+
+  expect(screen.getByRole('textbox', { name: 'Instalment 1 description' })).toHaveValue('Local addition');
+  expect(screen.getByRole('textbox', { name: 'Instalment 2 description' })).toHaveValue('Server deposit updated');
+  expect(screen.getByRole('textbox', { name: 'Instalment 3 description' })).toHaveValue('Server balance updated');
+  expect(screen.getByText(/changed on the server/)).toBeInTheDocument();
+});
+
+test('surfaces a conflict when the server changes a locally edited row', async () => {
+  const user = userEvent.setup();
+  const initial = [{ id: 'plan-1', label: 'Deposit', percentage: 100, amount: 1000, dueOn: '2026-09-01', internalNote: '', status: 'draft' as const }];
+  const view = render(<PaymentPlanEditor quoteTotal={1000} instalments={initial} onSave={vi.fn()} onSync={vi.fn()} />);
+  await user.type(screen.getByRole('textbox', { name: 'Instalment 1 description' }), ' local');
+  view.rerender(<PaymentPlanEditor quoteTotal={1000} instalments={[{ ...initial[0], label: 'Deposit server' }]} onSave={vi.fn()} onSync={vi.fn()} />);
+
+  expect(screen.getByRole('textbox', { name: 'Instalment 1 description' })).toHaveValue('Deposit local');
+  expect(screen.getByText(/changed on the server/)).toBeInTheDocument();
+});

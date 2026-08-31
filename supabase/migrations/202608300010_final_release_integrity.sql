@@ -26,10 +26,24 @@ create policy "customers read issued or paid own invoice lines" on public.invoic
     )
   );
 
--- Migration 008 pre-populated snapshots for every quote.  Retain only those
--- independently supported by a released quote delivery or an issued/paid invoice.
+-- Migration 008 pre-populated snapshots for every quote. Establish the release
+-- marker before cleanup: a download-only snapshot has no delivery row or invoice,
+-- so provenance cannot be reconstructed safely. Preserve those snapshots rather
+-- than allowing a forward migration to silently change an already-downloaded quote.
+alter table public.quotes add column if not exists document_generated_at timestamptz;
+alter table public.invoices add column if not exists document_generated_at timestamptz;
+update public.quotes q
+set document_generated_at = coalesce(q.document_generated_at, s.captured_at)
+from public.quote_payment_schedule_snapshots s
+where s.quote_id = q.id and q.document_generated_at is null;
+
+-- Cleanup is limited to snapshots that have no release marker. Existing snapshots
+-- are conservatively retained when their original release provenance is unknown.
 delete from public.quote_payment_schedule_snapshots s
 where not exists (
+  select 1 from public.quotes q
+  where q.id = s.quote_id and q.document_generated_at is not null
+) and not exists (
   select 1 from public.order_document_deliveries d
   where d.document_type = 'quote' and d.quote_id = s.quote_id and d.outcome = 'sent'
 ) and not exists (
@@ -38,7 +52,6 @@ where not exists (
   join public.invoices i on i.payment_plan_instalment_id = p.id
   where p.quote_id = s.quote_id and i.status in ('issued', 'paid')
 );
-
 create or replace function public.ensure_quote_number(p_quote_id uuid)
 returns text
 language plpgsql
