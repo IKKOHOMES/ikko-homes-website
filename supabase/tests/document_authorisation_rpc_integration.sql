@@ -22,9 +22,9 @@ begin
   -- creates the customer record used by the ownership fixture.
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
   values
-    (v_admin_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'document-admin-' || v_admin_user || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer"}', now(), now()),
-    (v_owner_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'document-owner-' || v_owner_user || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer"}', now(), now()),
-    (v_other_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'document-other-' || v_other_user || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer"}', now(), now());
+    (v_admin_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'document-admin-' || v_admin_user || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer","account_type":"customer"}', now(), now()),
+    (v_owner_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'document-owner-' || v_owner_user || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer","account_type":"customer"}', now(), now()),
+    (v_other_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'document-other-' || v_other_user || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer","account_type":"customer"}', now(), now());
   insert into public.profiles (id, role) values (v_admin_user, 'admin');
 
   select id into v_owner_customer from public.customers where auth_user_id = v_owner_user;
@@ -94,12 +94,12 @@ declare
   v_other_order uuid;
 begin
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
-  values (v_owner, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-' || v_owner || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer"}', now(), now());
+  values (v_owner, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-' || v_owner || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer","account_type":"customer"}', now(), now());
   select id into v_customer from public.customers where auth_user_id = v_owner;
   if v_customer is null then raise exception 'RLS fixture metadata did not create the owner customer'; end if;
   insert into public.orders(order_number, customer_id, status) values ('RLS-' || gen_random_uuid(), v_customer, 'invoiced') returning id into v_order;
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
-  values (v_other_owner, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-other-' || v_other_owner || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer"}', now(), now());
+  values (v_other_owner, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-other-' || v_other_owner || '@example.test', crypt('password', gen_salt('bf')), now(), '{"provider":"email"}', '{"first_name":"Fixture","last_name":"Customer","account_type":"customer"}', now(), now());
   select id into v_other_customer from public.customers where auth_user_id = v_other_owner;
   if v_other_customer is null then raise exception 'RLS fixture metadata did not create the other customer'; end if;
   insert into public.orders(order_number, customer_id, status) values ('RLS-OTHER-' || gen_random_uuid(), v_other_customer, 'invoiced') returning id into v_other_order;
@@ -155,5 +155,5 @@ begin
     raise exception 'customer invoice RLS exposed another order';
   end if;
 end;
-;
+$$;
 rollback;

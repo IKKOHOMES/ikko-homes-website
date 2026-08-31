@@ -152,15 +152,27 @@ begin
       raise exception 'Unauthorised.';
     end if;
 
-    perform 1 from public.orders where id = v_order.id for update;
+    select * into v_order
+    from public.orders
+    where id = v_quote.order_id
+    for update;
     if not found then raise exception 'Unable to load the document.'; end if;
+    select * into v_customer
+    from public.customers
+    where id = v_order.customer_id
+    for update;
+    if not found or (not v_admin and v_customer.auth_user_id is distinct from v_caller) then
+      raise exception 'Unauthorised.';
+    end if;
     perform 1 from public.payment_plan_instalments
       where order_id = v_order.id
       order by id
       for update;
     select * into v_quote
     from public.quotes
-    where id = p_document_id and status = 'confirmed'
+    where id = p_document_id
+      and order_id = v_order.id
+      and status = 'confirmed'
     for update;
     if not found then raise exception 'Only confirmed quotes can be downloaded or emailed.'; end if;
 
@@ -204,15 +216,27 @@ begin
       raise exception 'Unauthorised.';
     end if;
 
-    perform 1 from public.orders where id = v_order.id for update;
+    select * into v_order
+    from public.orders
+    where id = v_invoice.order_id
+    for update;
     if not found then raise exception 'Only issued or paid invoices can be downloaded or emailed.'; end if;
+    select * into v_customer
+    from public.customers
+    where id = v_order.customer_id
+    for update;
+    if not found or (not v_admin and v_customer.auth_user_id is distinct from v_caller) then
+      raise exception 'Unauthorised.';
+    end if;
     perform 1 from public.payment_plan_instalments
       where order_id = v_order.id
       order by id
       for update;
     select * into v_invoice
     from public.invoices
-    where id = p_document_id and status in ('issued', 'paid')
+    where id = p_document_id
+      and order_id = v_order.id
+      and status in ('issued', 'paid')
     for update;
     if not found then raise exception 'Only issued or paid invoices can be downloaded or emailed.'; end if;
 

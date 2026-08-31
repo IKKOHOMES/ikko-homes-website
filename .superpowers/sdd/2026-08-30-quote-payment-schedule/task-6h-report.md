@@ -18,3 +18,10 @@
 - `npm test` — blocked by existing local configuration: 39 UI tests fail with `Supabase is not configured.` The DB changes do not touch those paths.
 - `npx supabase status` / `npx supabase db lint` — blocked because Docker/Podman and the local Postgres instance are unavailable on this host.
 - The SQL fixtures were not run for the same local-database reason. Run after `supabase start`/`supabase db reset` with psql as documented at the top of each fixture.
+## Review follow-up (2026-09-01)
+
+- Auth/RLS fixtures now use `raw_user_meta_data` with `account_type: "customer"` and all `DO` blocks terminate with `$$;` before rollback, so customer-trigger failures surface before RLS assertions.
+- The document RPC now re-locks the current order and customer after the common order lock, reruns ownership authorization, and constrains the final quote/invoice `FOR UPDATE` lookup to that locked order.
+- `document_generation_lock_order_two_session.sql` now gives executable two-session commands for final-document exclusive-lock contention and the document-to-different-order race.
+
+Verification: `git diff --check` and `npm run build` passed. Database lint and SQL execution remain blocked by the missing local Docker/Postgres runtime.
