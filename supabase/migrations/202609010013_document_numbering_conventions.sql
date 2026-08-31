@@ -73,6 +73,7 @@ as $$
 declare
   v_quote public.quotes;
   v_source public.quotes;
+  v_order_id uuid;
   v_period char(6);
   v_sequence bigint;
 begin
@@ -81,15 +82,26 @@ begin
     raise exception 'Only administrators can assign quote numbers';
   end if;
 
+  -- Keep the lifecycle lock order used by confirmation and payment-plan RPCs.
+  select order_id into v_order_id
+  from public.quotes
+  where id = p_quote_id;
+  if not found then raise exception 'Quote % does not exist', p_quote_id; end if;
+  perform 1 from public.orders where id = v_order_id for update;
   select * into v_quote from public.quotes where id = p_quote_id for update;
   if not found then raise exception 'Quote % does not exist', p_quote_id; end if;
+  if v_quote.status <> 'confirmed' then
+    raise exception 'Only confirmed quotes can receive a quote number.';
+  end if;
   if v_quote.quote_number is not null then return v_quote.quote_number; end if;
 
   select * into v_source
   from public.quotes
   where id = coalesce(v_quote.quote_number_source_id, v_quote.id)
   for update;
-  if not found then raise exception 'Quote number source is unavailable.'; end if;
+  if not found or v_source.order_id <> v_quote.order_id or v_source.status <> 'confirmed' then
+    raise exception 'A confirmed quote number source is required.';
+  end if;
   if v_source.quote_number is not null then return v_source.quote_number; end if;
 
   v_period := to_char(v_source.created_at, 'YYYYMM');
@@ -167,11 +179,6 @@ begin
     if v_sequence is null then
       v_sequence := substring(v_number from '^ORD-[0-9]{6}([0-9]+)$')::bigint;
     end if;
-  elsif v_number like 'IKKO%' then
-    v_period := substring(v_number from '^IKKO([0-9]{6})[0-9]+$');
-    if v_sequence is null then
-      v_sequence := substring(v_number from '^IKKO[0-9]{6}([0-9]+)$')::bigint;
-    end if;
   end if;
 
   if v_period is not null and v_sequence is not null then
@@ -180,7 +187,29 @@ begin
 
   -- Arbitrary historical quote numbers have no safe numeric component. Keep
   -- the old allocator as a compatibility fallback rather than rewriting it.
-  return public.reserve_invoice_number();
+  return public.reserve_legacy_invoice_number();
+end;
+$$;
+
+-- The legacy sequence predates this convention and may have been seeded below
+-- an already persisted custom value. Skip any occupied value before inserting
+-- so compatibility allocation cannot collide with an existing invoice.
+create or replace function public.reserve_legacy_invoice_number()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_number text;
+begin
+  loop
+    v_number := public.reserve_invoice_number();
+    exit when not exists (
+      select 1 from public.invoices where invoice_number = v_number
+    );
+  end loop;
+  return v_number;
 end;
 $$;
 
@@ -243,7 +272,9 @@ $$;
 revoke all on function public.excel_milestone_suffix(integer) from public;
 revoke all on function public.ensure_quote_number(uuid) from public;
 revoke all on function public.reserve_payment_plan_invoice_number(uuid, uuid) from public;
+revoke all on function public.reserve_legacy_invoice_number() from public;
 revoke all on function public.sync_payment_plan_invoice_draft(uuid, text, text, text, text, uuid, text, numeric, date) from public;
 grant execute on function public.ensure_quote_number(uuid) to authenticated, service_role;
 grant execute on function public.reserve_payment_plan_invoice_number(uuid, uuid) to service_role;
+grant execute on function public.reserve_legacy_invoice_number() to service_role;
 grant execute on function public.sync_payment_plan_invoice_draft(uuid, text, text, text, text, uuid, text, numeric, date) to service_role;
