@@ -86,8 +86,10 @@ begin
     jsonb_build_object('id', v_draft_instalment, 'label', 'Balance changed after release', 'percentage', 50, 'amount', 500, 'dueOn', current_date + 32, 'internalNote', 'later edit')
   ));
   if (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v2) like '%changed after release%'
-    or v_document #>> '{input,paymentSchedule,1,description}' <> 'Balance revised' then
-    raise exception 'released quote schedule snapshot was overwritten';
+    or v_document #>> '{input,paymentSchedule,0,description}' <> 'Deposit'
+    or v_document #>> '{input,paymentSchedule,1,description}' <> 'Balance revised'
+    or jsonb_array_length(v_document #> '{input,paymentSchedule}') <> 2 then
+    raise exception 'revision snapshot did not retain prior issued milestone and current draft only';
   end if;
 
   -- A mixed paid/draft schedule must keep the order out of completed.
