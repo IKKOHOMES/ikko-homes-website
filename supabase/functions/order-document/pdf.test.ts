@@ -552,38 +552,50 @@ Deno.test("places first-page studio details in the right header and draws quote 
   }
 });
 
-Deno.test("omits the ABN label when no explicitly sourced ABN is provided", async () => {
+Deno.test("omits every ABN token when ABN input is absent or whitespace", async () => {
   Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
-  const result = await buildOrderPdf({
-    documentType: "invoice",
-    number: "INV-HEADER-1001",
-    issuedOn: "2026-08-30",
-    dueOn: "2026-09-15",
-    customer: {
-      name: "No ABN Customer",
-      email: "no-abn@example.com",
-      phone: "0400 000 000",
-      address: "69 Patricia Loop",
-    },
-    studio: {
-      address: "69 Patricia Loop, Keysborough VIC 3173",
-      email: "info@ikkohomes.com.au",
-      phone: "0490 384 021",
-    },
-    lines: [{
-      description: "No registration fixture",
-      quantity: 1,
-      unitPrice: 100,
-    }],
-    subtotal: 100,
-    discountTotal: 0,
-    gstTotal: 10,
-    totalDue: 110,
-  });
-  const [firstPage] = await extractPdfPageText(
-    await PDFDocument.load(result.bytes),
-  );
-  assert(!firstPage.includes("ABN 12 345 678 901"));
-  assert(firstPage.includes("0490 384 021"));
-  assert(firstPage.includes("info@ikkohomes.com.au"));
+  for (
+    const studio of [
+      {
+        address: "69 Patricia Loop, Keysborough VIC 3173",
+        email: "info@ikkohomes.com.au",
+        phone: "0490 384 021",
+      },
+      {
+        address: "69 Patricia Loop, Keysborough VIC 3173",
+        email: "info@ikkohomes.com.au",
+        phone: "0490 384 021",
+        abn: "   ",
+      },
+    ]
+  ) {
+    const result = await buildOrderPdf({
+      documentType: "invoice",
+      number: "INV-HEADER-1001",
+      issuedOn: "2026-08-30",
+      dueOn: "2026-09-15",
+      customer: {
+        name: "No Registration Customer",
+        email: "no-registration@example.com",
+        phone: "0400 000 000",
+        address: "69 Patricia Loop",
+      },
+      studio,
+      lines: [{
+        description: "No registration fixture",
+        quantity: 1,
+        unitPrice: 100,
+      }],
+      subtotal: 100,
+      discountTotal: 0,
+      gstTotal: 10,
+      totalDue: 110,
+    });
+    const [firstPage] = await extractPdfPageText(
+      await PDFDocument.load(result.bytes),
+    );
+    assert(!firstPage.includes("ABN"));
+    assert(firstPage.includes("0490 384 021"));
+    assert(firstPage.includes("info@ikkohomes.com.au"));
+  }
 });

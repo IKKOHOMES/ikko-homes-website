@@ -33,3 +33,10 @@ No deployment, push, or main-branch changes were performed.
 - Added regression coverage for header-before-metadata content order, right-header text matrices, black metadata fill operations, ABN-present content, and the absence of an unprovided ABN.
 - Re-ran Deno check and the PDF suite: 12/12 tests passed.
 - Rendered the corrected first-page header fixture with Poppler. The same sandbox image-helper failure prevented interactive PNG inspection; content-stream inspection confirmed the address matrix at x=427.623, y=728.89 on the right side of the first-page header.
+
+## Final no-ABN regression correction
+
+- Strengthened the no-ABN assertion to reject every uppercase ABN token in the first-page PDF stream instead of checking only one example ABN value.
+- The same regression now covers both absent ABN input and whitespace-only ABN input.
+- Required PDF edit marker was run before the test edit.
+- Deno check and the focused PDF suite passed: 12/12.
