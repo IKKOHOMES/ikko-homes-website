@@ -29,3 +29,18 @@
 - `npx supabase db lint` could not connect because the local Postgres endpoint at `127.0.0.1:54322` is not running. The SQL regression is included for a reset local Supabase database.
 - The full frontend test suite has 39 pre-existing environment failures caused by missing Supabase configuration; the focused Task 6D suites pass.
 - No deployment, push, or main-worktree changes were performed.
+## P1 review correction
+
+- Added forward migration `202608300009_document_authorisation_snapshot_freeze.sql`.
+  - `load_authorised_order_document` now accepts only document type and ID. It derives the caller from `auth.uid()` and administrator status from `public.is_admin()` inside the security-definer RPC; `service_role` remains an explicit supported privileged caller. The obsolete four-argument RPC is dropped and the new RPC is granted only to `authenticated` and `service_role`.
+  - The Edge Function invokes that RPC through a JWT-scoped anon client constructed from the verified request token. It no longer passes application-supplied caller IDs or role flags, while the service-role client remains limited to delivery logging.
+  - Explicit administrators can load documents for guest customers with no `auth_user_id`; customer callers still require matching ownership.
+  - Snapshots are immutable (`ON CONFLICT DO NOTHING`) and schedule triggers are removed. A schedule can change while its quote has not been released; the first authorised quote document load freezes the current schedule. Existing snapshot rows remain frozen.
+- Added Deno tests asserting no caller ID/admin flag is sent to the RPC and that database-authorised guest payloads are accepted. SQL coverage now freezes a same-revision schedule on document generation, then proves a later schedule save cannot alter the released PDF snapshot.
+
+### P1 verification
+
+- Focused Deno tests: 16/16 passed (`auth`, `index`, `quote-revision-schedule`).
+- Focused Vitest: 7/7 passed.
+- Deno check and frontend build passed. Existing Vite warnings remain.
+- `git diff --check` passed.

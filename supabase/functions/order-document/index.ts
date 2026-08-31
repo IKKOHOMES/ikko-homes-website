@@ -99,21 +99,18 @@ export function assertInvoiceDocumentLifecycle(status: unknown) {
 }
 
 export async function loadAuthorisedOrderDocument(
-  caller: DocumentCaller,
   documentType: DocumentType,
   documentId: string,
-  admin: SupabaseClient,
+  callerClient: SupabaseClient,
 ): Promise<LoadedOrderDocument> {
-  const { data, error } = await admin.rpc('load_authorised_order_document', {
+  const { data, error } = await callerClient.rpc('load_authorised_order_document', {
     p_document_type: documentType,
     p_document_id: documentId,
-    p_caller_id: caller.id,
-    p_is_admin: caller.isAdmin,
   });
   if (error || !data) throw new Error(error?.message || 'Unable to load the document.');
   const payload = asRecord(firstRow(data));
   const input = asRecord(payload.input);
-  if (input.documentType !== documentType || !asString(payload.orderId) || !asString(payload.recipientEmail) || !asString(payload.customerAuthUserId) || !asString(input.number)) {
+  if (input.documentType !== documentType || !asString(payload.orderId) || !asString(payload.recipientEmail) || !asString(input.number)) {
     throw new Error('Unable to load the document.');
   }
   return {
@@ -342,15 +339,14 @@ if (import.meta.main) {
       return json({ error: "Method not allowed." }, 405);
     }
     try {
-      const { admin, caller } = await requireDocumentCaller(request);
+      const { admin, callerClient } = await requireDocumentCaller(request);
       const { action, documentType, documentId } = parsePayload(
         await request.json(),
       );
       const loaded = await loadAuthorisedOrderDocument(
-        caller,
         documentType,
         documentId,
-        admin,
+        callerClient,
       );
       const document = await buildOrderPdf(loaded.input);
       if (action === "download") {

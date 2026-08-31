@@ -16,6 +16,7 @@ declare
   v_number text;
   v_legacy_revision uuid;
   v_quote_v4 uuid;
+  v_document jsonb;
 begin
   insert into public.customers (first_name, last_name, email, phone, address)
     values ('Lifecycle', 'Test', 'lifecycle-' || gen_random_uuid() || '@example.test', '0400000000', '1 Test Street') returning id into v_customer;
@@ -78,10 +79,15 @@ begin
     or (select quote_id from public.payment_plan_instalments where id = v_issued_instalment) <> v_quote_v1 then
     raise exception 'schedule revision linkage changed immutable data or missed the draft row';
   end if;
-  if (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v1) not like '%Balance%'
-    or (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v1) like '%Balance revised%'
-    or (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v2) not like '%Balance revised%' then
-    raise exception 'quote payment schedule snapshots are not revision-stable';
+  -- First document generation freezes the latest same-revision schedule.
+  v_document := public.load_authorised_order_document('quote', v_quote_v2);
+  perform public.replace_payment_plan_and_sync_invoices(v_order, v_quote_v2, jsonb_build_array(
+    jsonb_build_object('id', v_issued_instalment, 'label', 'Deposit', 'percentage', 50, 'amount', 500, 'dueOn', current_date, 'internalNote', ''),
+    jsonb_build_object('id', v_draft_instalment, 'label', 'Balance changed after release', 'percentage', 50, 'amount', 500, 'dueOn', current_date + 32, 'internalNote', 'later edit')
+  ));
+  if (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v2) like '%changed after release%'
+    or v_document #>> '{input,paymentSchedule,1,description}' <> 'Balance revised' then
+    raise exception 'released quote schedule snapshot was overwritten';
   end if;
 
   -- A mixed paid/draft schedule must keep the order out of completed.

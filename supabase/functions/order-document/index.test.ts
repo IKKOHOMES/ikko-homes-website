@@ -73,9 +73,7 @@ Deno.test("authorises ownership inside the final document RPC before allocating 
   } as unknown as SupabaseClient;
 
   await assertRejects(
-    () => loadAuthorisedOrderDocument(
-      { id: "customer-1", isAdmin: false },
-      "quote",
+    () => loadAuthorisedOrderDocument("quote",
       "quote-1",
       admin,
     ),
@@ -87,6 +85,7 @@ Deno.test("authorises ownership inside the final document RPC before allocating 
 
 Deno.test("allows an explicit administrator to access any order document", () => {
   assertDocumentAccess({ id: "admin-1", isAdmin: true }, { customerAuthUserId: "customer-1" });
+  assertDocumentAccess({ id: "admin-1", isAdmin: true }, { customerAuthUserId: "" });
 });
 
 Deno.test("denies document generation for a draft invoice", () => {
@@ -137,7 +136,7 @@ Deno.test('loads the final document payload through one authorisation-bounded RP
     from: () => { throw new Error('final document data must not be loaded through unbounded table queries'); },
     rpc: async (name: string, params: Record<string, unknown>) => {
       assertEquals(name, 'load_authorised_order_document');
-      assertEquals(params, { p_document_type: 'invoice', p_document_id: 'invoice-1', p_caller_id: 'customer-1', p_is_admin: false });
+      assertEquals(params, { p_document_type: 'invoice', p_document_id: 'invoice-1' });
       return { data: {
         orderId: 'order-1', recipientEmail: 'client@example.com', customerAuthUserId: 'customer-1',
         input: { documentType: 'invoice', number: 'IKKO-1001', issuedOn: '2026-09-01', dueOn: '2026-10-01', invoiceStatus: 'issued', customer: { name: 'Aiko', email: 'client@example.com', phone: '0400', address: '1 Studio Lane' }, studio: { address: 'Studio', email: 'studio@example.com', phone: '0401', abn: null }, lines: [], subtotal: 100, discountTotal: 0, gstTotal: 10, totalDue: 110, invoiceMilestone: null },
@@ -145,7 +144,7 @@ Deno.test('loads the final document payload through one authorisation-bounded RP
     },
   } as unknown as SupabaseClient;
 
-  const loaded = await loadAuthorisedOrderDocument({ id: 'customer-1', isAdmin: false }, 'invoice', 'invoice-1', admin);
+  const loaded = await loadAuthorisedOrderDocument('invoice', 'invoice-1', admin);
   assertEquals(loaded.orderId, 'order-1');
   assertEquals(loaded.input.invoiceStatus, 'issued');
 });
@@ -157,8 +156,29 @@ Deno.test('does not generate a document when the final bounded load rejects a vo
   } as unknown as SupabaseClient;
 
   await assertRejects(
-    () => loadAuthorisedOrderDocument({ id: 'customer-1', isAdmin: false }, 'invoice', 'invoice-1', admin),
+    () => loadAuthorisedOrderDocument('invoice', 'invoice-1', admin),
     Error,
     'Only issued or paid invoices can be downloaded or emailed.',
   );
+});
+Deno.test('does not send caller identity or privilege claims to the document RPC', async () => {
+  const admin = {
+    rpc: async (name: string, params: Record<string, unknown>) => {
+      assertEquals(name, 'load_authorised_order_document');
+      assertEquals(params, { p_document_type: 'quote', p_document_id: 'quote-1' });
+      return { data: { orderId: 'order-1', recipientEmail: 'guest@example.com', customerAuthUserId: null, input: { documentType: 'quote', number: 'IKKO2026080001' } }, error: null };
+    },
+  } as unknown as SupabaseClient;
+
+  await loadAuthorisedOrderDocument('quote', 'quote-1', admin);
+});
+
+Deno.test('accepts a guest order payload when the database has authorised the administrator', async () => {
+  const admin = {
+    rpc: async () => ({ data: { orderId: 'order-guest', recipientEmail: 'guest@example.com', customerAuthUserId: null, input: { documentType: 'invoice', number: 'IKKO-1002', invoiceStatus: 'issued' } }, error: null }),
+  } as unknown as SupabaseClient;
+
+  const loaded = await loadAuthorisedOrderDocument('invoice', 'invoice-guest', admin);
+  assertEquals(loaded.customerAuthUserId, '');
+  assertEquals(loaded.recipientEmail, 'guest@example.com');
 });

@@ -12,7 +12,7 @@ export function isDocumentAdministrator(profile: unknown): boolean {
 
 export async function requireDocumentCaller(
   request: Request,
-): Promise<{ admin: SupabaseClient; caller: DocumentCaller }> {
+): Promise<{ admin: SupabaseClient; callerClient: SupabaseClient }> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -28,17 +28,12 @@ export async function requireDocumentCaller(
   const { data: userData, error: userError } = await auth.auth.getUser(token);
   if (userError || !userData.user) throw new Error('Unauthorised.');
 
+  const callerClient = createClient(supabaseUrl, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: 'Bearer ' + token } },
+  });
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const { data: profile, error: profileError } = await admin.from('profiles')
-    .select('role')
-    .eq('id', userData.user.id)
-    .maybeSingle();
-  if (profileError) throw new Error('Unauthorised.');
-
-  return {
-    admin,
-    caller: { id: userData.user.id, isAdmin: isDocumentAdministrator(profile) },
-  };
+  return { admin, callerClient };
 }
