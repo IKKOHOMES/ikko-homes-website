@@ -25,6 +25,9 @@ begin
   insert into public.quotes (order_id, version, status, total, expires_on)
     values (v_order, 1, 'confirmed', 1000, current_date + 30) returning id into v_quote_v1;
   v_number := public.ensure_quote_number(v_quote_v1);
+  if v_number !~ '^ORD-[0-9]{6}[0-9]+$' then
+    raise exception 'new quote did not receive the ORD numbering convention';
+  end if;
   insert into public.quotes (order_id, version, status, quote_number_source_id, total, expires_on)
     values (v_order, 2, 'confirmed', v_quote_v1, 1000, current_date + 30) returning id into v_quote_v2;
   if public.ensure_quote_number(v_quote_v2) <> v_number then

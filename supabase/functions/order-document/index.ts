@@ -142,9 +142,9 @@ export async function loadQuotePdfInput(
     const { data: allocated } = await admin.rpc("ensure_quote_number", {
       p_quote_id: quoteId,
     });
-    quoteNumber = asString(allocated) ||
-      `QUOTE-${asString(order.order_number)}-V${asNumber(quote.version)}`;
+    quoteNumber = asString(allocated);
   }
+  if (!quoteNumber) throw new Error("Unable to allocate the quote number.");
   if (!asString(order.order_number) || !email) {
     throw new Error("The quote customer is unavailable.");
   }
@@ -241,10 +241,10 @@ export async function loadInvoicePdfInput(
         const row = asRecord(firstRow(invoice.payment_plan_instalments));
         return Object.keys(row).length
           ? {
-            description: asString(row.description),
+            description: asString(row.label) || asString(row.description),
             percentage: asNumber(row.percentage),
             amount: asNumber(row.amount),
-            dueOn: asString(row.dueOn),
+            dueOn: asString(row.due_on) || asString(row.dueOn),
             status: asString(row.status),
           }
           : null;
@@ -315,7 +315,7 @@ async function emailDocument(
       to: [input.recipientEmail],
       subject,
       html:
-        `<p>Your IKKO HOMES ${input.documentType} is attached.</p><p>Please contact our studio if you have any questions.</p>`,
+        `<p>Your IKKO HOMES ${input.documentType === "quote" ? "Quote" : "Invoice"} ${input.reference} is attached.</p><p>Please contact our studio if you have any questions.</p>`,
       attachments: [{
         filename: input.filename,
         content: toBase64(input.content),

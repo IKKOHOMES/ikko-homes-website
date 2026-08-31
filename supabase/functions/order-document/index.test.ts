@@ -41,12 +41,12 @@ Deno.test("uses an allocated quote number for a legacy quote PDF input", async (
     rpc: async (name: string, params: Record<string, string>) => {
       assertEquals(name, "ensure_quote_number");
       assertEquals(params, { p_quote_id: "quote-1" });
-      return { data: "IKKO2026080042", error: null };
+      return { data: "ORD-2026080042", error: null };
     },
   } as unknown as SupabaseClient;
 
   const loaded = await loadQuotePdfInput(admin, "quote-1");
-  assertEquals(loaded.input.number, "IKKO2026080042");
+  assertEquals(loaded.input.number, "ORD-2026080042");
 });
 
 Deno.test("allows a customer to access their own order document", () => {

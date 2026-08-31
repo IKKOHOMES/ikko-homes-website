@@ -5,7 +5,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 type InstalmentStatus = 'draft' | 'issued' | 'paid' | 'overdue';
 type InvoiceStatus = 'draft' | 'issued' | 'paid';
-type Instalment = { id: string; label: string; amount: number; due_on: string; status: InstalmentStatus };
+type Instalment = { id: string; sequence: number; label: string; amount: number; due_on: string; status: InstalmentStatus };
 type CustomerSnapshot = { customer_name: string; customer_email: string; customer_address: string };
 export type GeneratedInvoice = { id: string; invoice_number: string; instalment_id: string; status: 'draft' | 'issued' | 'paid' };
 type StoredInvoice = GeneratedInvoice & { total: number; due_on: string } & Partial<CustomerSnapshot>;
@@ -54,7 +54,7 @@ export async function synchronisePaymentPlanInvoices(repository: InvoiceReposito
   const instalmentsById = new Map(instalments.map((instalment) => [instalment.id, instalment]));
   const synchronised: GeneratedInvoice[] = [];
 
-  for (const instalment of instalments.filter((line) => line.status === 'draft')) {
+  for (const instalment of instalments.filter((line) => line.status === 'draft').sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id))) {
     const current = invoicesByInstalment.get(instalment.id);
     if (current && current.status !== 'draft') throw new Error('Issued instalments cannot be changed.');
     const invoice = current

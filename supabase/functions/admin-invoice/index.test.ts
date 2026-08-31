@@ -7,8 +7,8 @@ function createRepository(overrides: Record<string, unknown> = {}) {
   const inserted: StoredInvoice[] = [];
   let sequence = 1000;
   const instalments = [
-    { id: 'plan-1', label: 'Deposit', amount: 500, due_on: '2026-09-01', status: 'draft' as const },
-    { id: 'plan-2', label: 'Balance', amount: 500, due_on: '2026-10-01', status: 'draft' as const },
+    { id: 'plan-1', sequence: 1, label: 'Deposit', amount: 500, due_on: '2026-09-01', status: 'draft' as const },
+    { id: 'plan-2', sequence: 2, label: 'Balance', amount: 500, due_on: '2026-10-01', status: 'draft' as const },
   ];
   return {
     repository: {
@@ -39,6 +39,24 @@ Deno.test('creates one draft invoice for each payment schedule line', async () =
   assertEquals(created.map((invoice) => invoice.status), ['draft', 'draft']);
   assertEquals(inserted.map((invoice) => invoice.total), [500, 500]);
   assertEquals(inserted.map((invoice) => invoice.due_on), ['2026-09-01', '2026-10-01']);
+});
+
+Deno.test('allocates fallback invoice numbers in payment-plan sequence order', async () => {
+  const reservedSequences: string[] = [];
+  const { repository, inserted } = createRepository({
+    getPaymentPlanInstalments: async () => [
+      { id: 'plan-2', sequence: 2, label: 'Balance', amount: 500, due_on: '2026-10-01', status: 'draft' as const },
+      { id: 'plan-1', sequence: 1, label: 'Deposit', amount: 500, due_on: '2026-09-01', status: 'draft' as const },
+    ],
+    reserveInvoiceNumber: async () => {
+      reservedSequences.push('next');
+      return `IKKO-${reservedSequences.length}`;
+    },
+  });
+
+  await synchronisePaymentPlanInvoices(repository, 'order-1');
+
+  assertEquals(inserted.map((invoice) => invoice.instalment_id), ['plan-1', 'plan-2']);
 });
 
 Deno.test('updates an existing draft without reserving a second invoice number', async () => {

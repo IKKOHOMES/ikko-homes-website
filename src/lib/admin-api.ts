@@ -5,7 +5,7 @@ import { loadExistingSampleAssets, loadExistingSampleRecords } from './sample-co
 import { normaliseProductDetailContent, type ProductDetailContent } from '../types/product-detail-content';
 import { calculateQuoteTotals, validatePaymentPlan, type PaymentPlanDraft } from './payment-plan';
 
-export type PaymentPlanInstalment = PaymentPlanDraft & { id: string; status: 'draft' | 'issued' | 'paid' | 'overdue'; paidAt: string | null };
+export type PaymentPlanInstalment = PaymentPlanDraft & { id: string; sequence?: number; status: 'draft' | 'issued' | 'paid' | 'overdue'; paidAt: string | null };
 export type EditableQuoteLine = { id?: string; displayName: string; unitPrice: number; quantity: number; isTbd: boolean };
 export type QuoteSaveInput = { quoteId: string; orderId: string; expiresOn: string; internalNote: string; discountTotal?: number; lines: EditableQuoteLine[] };
 export type EditableQuote = { id: string; orderId: string; version: number; status: 'draft' | 'confirmed'; quoteNumber?: string; quoteNumberSourceId?: string | null; subtotal?: number; discountTotal?: number; gstTotal?: number; total: number; expiresOn: string; internalNote: string; createdAt?: string; lines: EditableQuoteLine[] };
@@ -80,7 +80,7 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
     lines: row.order_lines.map((line) => ({ id: line.id, name: line.display_name, kind: line.line_kind, unitPrice: line.unit_price === null ? null : Number(line.unit_price), quantity: line.quantity, finish: line.finish })),
     drawings,
     invoices: (row.invoices ?? []).map((invoice) => ({ id: invoice.id, number: invoice.invoice_number, total: Number(invoice.total), status: invoice.status, dueOn: invoice.due_on, paidAt: invoice.paid_at, paymentPlanInstalmentId: invoice.payment_plan_instalment_id })),
-    paymentPlan: (row.payment_plan_instalments ?? []).sort((a, b) => a.sequence - b.sequence).map((line) => ({ id: line.id, label: line.label, percentage: line.percentage === null ? 0 : Number(line.percentage), amount: Number(line.amount), dueOn: line.due_on, status: line.status, internalNote: line.internal_note, paidAt: line.paid_at })),
+    paymentPlan: (row.payment_plan_instalments ?? []).sort((a, b) => a.sequence - b.sequence).map((line) => ({ id: line.id, sequence: line.sequence, label: line.label, percentage: line.percentage === null ? 0 : Number(line.percentage), amount: Number(line.amount), dueOn: line.due_on, status: line.status, internalNote: line.internal_note, paidAt: line.paid_at })),
     quotes: (() => { const numbers = new Map(row.quotes.map((quote) => [quote.id, quote.quote_number])); return row.quotes.map((quote) => ({ id: quote.id, orderId: row.id, version: quote.version, status: quote.status, quoteNumber: quote.quote_number ?? numbers.get(quote.quote_number_source_id ?? '') ?? undefined, quoteNumberSourceId: quote.quote_number_source_id, subtotal: quote.subtotal === null ? undefined : Number(quote.subtotal), discountTotal: quote.discount_total === null ? 0 : Number(quote.discount_total), gstTotal: quote.gst_total === null ? undefined : Number(quote.gst_total), total: Number(quote.total), expiresOn: quote.expires_on, internalNote: quote.internal_note, createdAt: quote.created_at, lines: (quote.quote_lines ?? []).map((line) => ({ id: line.id, displayName: line.display_name, unitPrice: Number(line.unit_price), quantity: line.quantity, isTbd: line.is_tbd })) })).sort((a, b) => b.version - a.version); })(),
   };
 }
