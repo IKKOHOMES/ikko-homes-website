@@ -476,3 +476,114 @@ Deno.test("renders configured studio contact and ABN alongside the approved IKKO
     ]
   ) assert(text.includes(color));
 });
+
+Deno.test("places first-page studio details in the right header and draws quote metadata in ink", async () => {
+  Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
+  const result = await buildOrderPdf({
+    documentType: "quote",
+    number: "IKKO2026080104",
+    issuedOn: "2026-08-30",
+    expiresOn: "2026-09-15",
+    customer: {
+      name: "Header Customer",
+      email: "header@example.com",
+      phone: "0400 000 000",
+      address: "69 Patricia Loop",
+    },
+    studio: {
+      address: "69 Patricia Loop, Keysborough VIC 3173",
+      email: "info@ikkohomes.com.au",
+      phone: "0490 384 021",
+      abn: "ABN 12 345 678 901",
+    },
+    lines: [{ description: "Header fixture", quantity: 1, unitPrice: 100 }],
+    subtotal: 100,
+    discountTotal: 0,
+    gstTotal: 10,
+    totalDue: 110,
+  });
+  const [firstPage] = await extractPdfPageText(
+    await PDFDocument.load(result.bytes),
+  );
+  const headerBoundary = firstPage.indexOf("Issue date");
+  assert(headerBoundary > 0);
+  for (
+    const value of [
+      "69 Patricia Loop, Keysborough VIC 3173",
+      "0490 384 021",
+      "info@ikkohomes.com.au",
+      "ABN 12 345 678 901",
+    ]
+  ) {
+    const position = firstPage.indexOf(value);
+    assert(position >= 0);
+    assert(position < headerBoundary);
+  }
+  for (
+    const value of [
+      "69 Patricia Loop, Keysborough VIC 3173",
+      "0490 384 021",
+    ]
+  ) {
+    const position = firstPage.indexOf(value);
+    const drawCommand = firstPage.slice(Math.max(0, position - 220), position);
+    assert(
+      /1 0 0 1 [3-5][0-9]{2}(?:\.[0-9]+)? 7[0-3][0-9](?:\.[0-9]+)? Tm/.test(
+        drawCommand,
+      ),
+    );
+  }
+  const ink = "0.13725490196078433 0.13333333333333333 0.12549019607843137 rg";
+  for (
+    const value of [
+      "IKKO2026080104",
+      "Issue date",
+      "30 Aug 2026",
+      "Valid until",
+      "15 Sept 2026",
+      "Reference",
+    ]
+  ) {
+    const position = firstPage.indexOf(value);
+    assert(position >= 0);
+    const colourPosition = firstPage.lastIndexOf(ink, position);
+    assert(colourPosition >= 0);
+    assert(position - colourPosition < 350);
+  }
+});
+
+Deno.test("omits the ABN label when no explicitly sourced ABN is provided", async () => {
+  Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
+  const result = await buildOrderPdf({
+    documentType: "invoice",
+    number: "INV-HEADER-1001",
+    issuedOn: "2026-08-30",
+    dueOn: "2026-09-15",
+    customer: {
+      name: "No ABN Customer",
+      email: "no-abn@example.com",
+      phone: "0400 000 000",
+      address: "69 Patricia Loop",
+    },
+    studio: {
+      address: "69 Patricia Loop, Keysborough VIC 3173",
+      email: "info@ikkohomes.com.au",
+      phone: "0490 384 021",
+    },
+    lines: [{
+      description: "No registration fixture",
+      quantity: 1,
+      unitPrice: 100,
+    }],
+    subtotal: 100,
+    discountTotal: 0,
+    gstTotal: 10,
+    totalDue: 110,
+  });
+  const [firstPage] = await extractPdfPageText(
+    await PDFDocument.load(result.bytes),
+  );
+  assert(!firstPage.includes("ABN 12 345 678 901"));
+  assert(firstPage.includes("0490 384 021"));
+  assert(firstPage.includes("info@ikkohomes.com.au"));
+});

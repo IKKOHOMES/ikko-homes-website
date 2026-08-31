@@ -25,3 +25,11 @@
 - Interactive PNG visual inspection was blocked by the workspace image helper (windows sandbox helper setup refresh error). The generated three-page count, complete text/content regressions, and exact graphics operators were verified programmatically instead.
 
 No deployment, push, or main-branch changes were performed.
+
+## Review correction
+
+- First-page quote/invoice reference text is now Ink #232220, matching the date metadata and continuation-page metadata.
+- The first-page right header now renders studio address on one line and phone, email, and optional ABN on a second line. The contact block is right-aligned at header coordinates above the metadata block.
+- Added regression coverage for header-before-metadata content order, right-header text matrices, black metadata fill operations, ABN-present content, and the absence of an unprovided ABN.
+- Re-ran Deno check and the PDF suite: 12/12 tests passed.
+- Rendered the corrected first-page header fixture with Poppler. The same sandbox image-helper failure prevented interactive PNG inspection; content-stream inspection confirmed the address matrix at x=427.623, y=728.89 on the right side of the first-page header.

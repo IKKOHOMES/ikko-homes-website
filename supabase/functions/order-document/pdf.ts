@@ -241,13 +241,30 @@ export async function buildOrderPdf(
     y: PAGE_HEIGHT - 82,
     size: 9,
     font: bold,
-    color: orange,
+    color: charcoal,
   });
   page.drawLine({
     start: { x: MARGIN, y: PAGE_HEIGHT - 98 },
     end: { x: PAGE_WIDTH - MARGIN, y: PAGE_HEIGHT - 98 },
     thickness: 1,
     color: orange,
+  });
+  const studioAbn = input.studio.abn?.trim();
+  const headerStudioDetails = [
+    input.studio.address,
+    [input.studio.phone, input.studio.email, studioAbn].filter(Boolean).join(
+      " | ",
+    ),
+  ];
+  headerStudioDetails.forEach((detail, index) => {
+    const width = sans.widthOfTextAtSize(detail, 7);
+    page.drawText(detail, {
+      x: PAGE_WIDTH - MARGIN - width,
+      y: PAGE_HEIGHT - 113 - index * 11,
+      size: 7,
+      font: sans,
+      color: charcoal,
+    });
   });
 
   let customerY = PAGE_HEIGHT - 129;
@@ -302,7 +319,7 @@ export async function buildOrderPdf(
   ];
   meta.forEach(([label, value], index) => {
     const y = PAGE_HEIGHT - 145 - index * 22;
-    page.drawText(label, { x: metaX, y, size: 8, font: sans, color: muted });
+    page.drawText(label, { x: metaX, y, size: 8, font: sans, color: charcoal });
     const width = bold.widthOfTextAtSize(value, 9);
     page.drawText(value, {
       x: PAGE_WIDTH - MARGIN - width,
@@ -406,7 +423,6 @@ export async function buildOrderPdf(
     color: muted,
   });
   y -= 18;
-  const studioAbn = input.studio.abn?.trim();
   const drawFooter = (target: PDFPage) => {
     target.drawLine({
       start: { x: MARGIN, y: 72 },
