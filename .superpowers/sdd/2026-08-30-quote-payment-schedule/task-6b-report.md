@@ -23,7 +23,7 @@
   - immutable v1 milestones plus mutable v2 draft changes,
   - legacy and new revision quote-number source normalization,
   - duplicate nonblank submitted IDs, including mixed-case UUID variants.
-- `supabase/tests/payment_plan_lock_order_two_session.sql` documents an executable two-psql-session lock-timeout regression and includes deterministic catalogue/privilege checks. It intentionally does not claim that a single SQL session proves concurrency.
+- `supabase/tests/payment_plan_lock_order_two_session.sql` documents an executable two-psql-session lock-timeout regression. It requires a fresh RPC-specific disposable fixture, explicit psql variables, and `SET LOCAL request.jwt.claim.role = 'service_role'` in each test transaction so each RPC passes the same production guard before contending on the common prefix. It uses a nonempty, total-matching replacement payload and includes deterministic catalogue/privilege checks. It intentionally does not claim that a single SQL session proves concurrency.
 - `supabase/functions/order-document/quote-revision-schedule.test.ts` covers v1/v2 schedule selection and inherited IKKO quote numbers.
 - `src/test/payment-plan-editor.test.tsx` verifies immutable schedule controls are disabled while drafts remain editable.
 - `src/test/quote-editor.test.tsx` verifies the inherited IKKO number is displayed.

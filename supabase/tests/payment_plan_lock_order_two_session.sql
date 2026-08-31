@@ -1,19 +1,32 @@
 -- Payment-plan lifecycle lock-order regression.
 --
--- Run this file in TWO psql sessions against a disposable database after applying
--- migrations. It is deliberately a manual multi-session test: a one-connection
--- SQL harness cannot prove that lock acquisition blocks rather than deadlocks.
--- Substitute a real order, a draft invoice on that order, and (for mark-paid) an
--- issued invoice on the same order before running.
+-- Run this test in TWO psql sessions against a disposable database after applying
+-- migrations. It deliberately uses two transactions: a one-connection SQL harness
+-- cannot prove that lock acquisition blocks rather than deadlocks.
+--
+-- Run each RPC with a fresh disposable fixture. For issue, synchronise, and
+-- replace, use a quoted order with a confirmed fully priced quote, a matching
+-- draft-only plan, and a draft invoice. For mark-paid, use an issued plan invoice
+-- on its own fixture. In both psql sessions set the variables needed by that RPC:
+--   \set order_id '...'
+--   \set quote_id '...'
+--   \set quote_total '...'
+--   \set draft_instalment_id '...'
+--   \set draft_invoice_id '...'
+--   \set issued_invoice_id '...'
+-- Both sessions set the same service-role custom GUC read by the production RPC
+-- authorization guard. This is test-session setup only; it does not change
+-- production grants or authorization.
 --
 -- Contract enforced by migration 202608300007:
 --   lock_payment_plan_order: orders -> all payment_plan_instalments (id ASC)
 --   issue/sync/replace/mark-paid: lock_payment_plan_order -> invoice
---   mark-paid then locks its linked instalment after the invoice.
+--   mark-paid then re-selects its linked instalment after the invoice.
 -- No lifecycle RPC may acquire an invoice before the order schedule.
 
 -- SESSION A: hold the common prefix. Keep this transaction open.
 begin;
+set local request.jwt.claim.role = 'service_role';
 select 1
 from public.orders
 where id = :'order_id'::uuid
@@ -24,14 +37,28 @@ where order_id = :'order_id'::uuid
 order by id
 for update;
 
--- SESSION B: run ONE of the following while Session A is open. Each must fail
--- with SQLSTATE 55P03 (lock timeout), demonstrating that it waits at the common
--- order/schedule prefix before it can lock an invoice. Repeat for every RPC.
+-- SESSION B: run ONE of the following while Session A is open. Each call first
+-- passes the production authorization guard, then must fail with SQLSTATE 55P03
+-- (lock timeout). Before the shared helper there are no row locks in these RPCs;
+-- this timeout therefore proves it reached the common order/schedule prefix.
+-- Repeat with a fresh disposable fixture for every RPC.
 begin;
+set local request.jwt.claim.role = 'service_role';
 set local lock_timeout = '2s';
 -- select * from public.issue_payment_plan_invoice(:'order_id'::uuid, :'draft_invoice_id'::uuid);
 -- select * from public.synchronise_payment_plan_invoices(:'order_id'::uuid);
--- select * from public.replace_payment_plan_and_sync_invoices(:'order_id'::uuid, :'quote_id'::uuid, '[]'::jsonb);
+-- select * from public.replace_payment_plan_and_sync_invoices(
+--   :'order_id'::uuid,
+--   :'quote_id'::uuid,
+--   jsonb_build_array(jsonb_build_object(
+--     'id', :'draft_instalment_id'::uuid,
+--     'label', 'Lock-order test',
+--     'percentage', 100,
+--     'amount', :'quote_total'::numeric,
+--     'dueOn', current_date,
+--     'internalNote', ''
+--   ))
+-- );
 -- select * from public.mark_payment_plan_invoice_paid(:'issued_invoice_id'::uuid, now(), 'Two-session lock-order test');
 rollback;
 
