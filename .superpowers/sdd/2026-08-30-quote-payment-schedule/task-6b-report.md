@@ -2,33 +2,40 @@
 
 ## Implemented
 
-- Added migration `202608300006_quote_lifecycle_revision_integrity.sql`.
-  - `mark_payment_plan_invoice_paid` uses the common order → full schedule (ordered by id) → invoice lock sequence, then re-selects the invoice/instalment. Concurrent final payments serialize on the order row: the first leaves the order invoiced while another row is unpaid; the waiting transaction re-evaluates and only then completes. Overdue is an instalment-only state: its invoice remains issued and can be paid.
-  - `replace_payment_plan_and_sync_invoices` canonicalizes nonblank IDs to UUIDs for duplicate, membership, delete, and update comparisons; it rejects mixed-case duplicates, locks the complete schedule deterministically, and permits edits to draft rows after an invoice is issued. Issued/paid rows must remain in the submitted schedule, remain byte-for-value immutable (including sequence), retain their original quote link and existing invoice, while draft rows may be edited, deleted, inserted, and relinked to the current confirmed revision.
-  - Quote revisions use `quotes.quote_number_source_id`; `ensure_quote_number` allocates/returns the number of the source quote, avoiding a duplicate unique quote number. The migration deterministically selects each order's earliest quote as source, moves the earliest legacy number to that row when necessary, clears revision numbers before the move, and links every later revision. The trigger enforces the same rule for new revisions.
-- Updated the admin client to invoke the paid-lifecycle RPC (instead of separate non-atomic writes), preserve quote-number linkage when creating a revision, resolve/display the inherited number, and lock issued/paid schedule controls in the editor.
-- Quote PDFs now load the payment schedule by order rather than only the current quote foreign key. This preserves immutable prior-revision invoice snapshots while making the latest revision PDF usable.
+- Added `202608300006_quote_lifecycle_revision_integrity.sql`.
+  - Quote revisions use `quotes.quote_number_source_id`. `ensure_quote_number` returns the original source number, while the migration deterministically chooses each order's earliest quote as source, moves a legacy number there when necessary, clears revision duplicates before the move, and links later revisions.
+  - Submitted payment-plan IDs are canonicalized as UUIDs for duplicate, membership, deletion, and update comparisons. Mixed-case duplicate UUID variants are rejected.
+  - Issued, overdue, and paid instalments are immutable; draft rows can still be edited, deleted, inserted, and relinked to a newer confirmed quote revision. Issued/paid rows retain their original quote link and invoice.
+  - `mark_payment_plan_invoice_paid` treats overdue strictly as an instalment status. The linked invoice remains `issued`, and can transition to paid.
+- Added forward migration `202608300007_payment_plan_lock_order.sql`.
+  - Introduces internal `lock_payment_plan_order`, which always locks `orders`, then every payment-plan instalment in ascending UUID order.
+  - Replaces every lifecycle RPC that can touch a plan: `sync_payment_plan_invoice_draft`, `synchronise_payment_plan_invoices`, `replace_payment_plan_and_sync_invoices`, `issue_payment_plan_invoice`, and `mark_payment_plan_invoice_paid`.
+  - Each RPC takes the common prefix before locking a linked invoice and re-selects mutable rows after that prefix. This removes invoice-first paths that could deadlock against schedule replacement or a simultaneous final payment.
+  - The helper is revoked from `public`; existing RPC grants and administrator checks remain intact.
+- Updated the admin client to call the paid-lifecycle RPC instead of separate writes, preserve quote-number linkage when creating a revision, display the inherited quote number, and disable all editing/removal/reordering actions for issued, overdue, and paid schedule rows.
+- Quote PDFs load the order schedule as of the requested revision: current-revision rows plus immutable milestones from that revision or earlier. A v1 PDF therefore excludes a later v2 draft, while invoice documents remain based on their immutable invoice/instalment snapshot.
 
-## Tests added/updated
+## Tests added or updated
 
-- `supabase/tests/quote_lifecycle_rpc.sql` is a rollback-only local SQL/RPC integration test for:
-  - mixed paid/draft plan does not complete,
-  - all paid plan completes (including an overdue instalment),
-  - issued row remains linked to v1 while a draft row is edited/relinked to v2,
-  - legacy/new quote revisions normalize to the earliest quote number source and return the original IKKO number,\n  - duplicate nonblank submitted schedule IDs, including mixed-case UUID variants, are rejected,\n  - an overdue instalment remains paired to an issued invoice before the paid RPC transition.
-- `supabase/functions/order-document/quote-revision-schedule.test.ts` verifies a revision PDF receives the order schedule and retained IKKO number.
-- `src/test/payment-plan-editor.test.tsx` verifies issued controls are disabled while a draft row remains editable.
+- `supabase/tests/quote_lifecycle_rpc.sql` is rollback-only local SQL/RPC coverage for:
+  - mixed paid/draft plans staying invoiced,
+  - all-paid plans completing, including an overdue instalment with an issued invoice,
+  - immutable v1 milestones plus mutable v2 draft changes,
+  - legacy and new revision quote-number source normalization,
+  - duplicate nonblank submitted IDs, including mixed-case UUID variants.
+- `supabase/tests/payment_plan_lock_order_two_session.sql` documents an executable two-psql-session lock-timeout regression and includes deterministic catalogue/privilege checks. It intentionally does not claim that a single SQL session proves concurrency.
+- `supabase/functions/order-document/quote-revision-schedule.test.ts` covers v1/v2 schedule selection and inherited IKKO quote numbers.
+- `src/test/payment-plan-editor.test.tsx` verifies immutable schedule controls are disabled while drafts remain editable.
 - `src/test/quote-editor.test.tsx` verifies the inherited IKKO number is displayed.
 
 ## Verification
 
-- Focused Vitest: 7 tests passed (`payment-plan-editor`, `quote-editor`, `admin-payment-plan-save`).
-- Production build: passed (`npm run build`). Existing Vite chunk-size/dynamic-import warnings remain.
-- `git diff --check`: passed.
-- Full `npm test`: 128 passed, 39 failed because this worktree has no Supabase environment configuration. The failures are existing app-shell/public-page tests that throw `Supabase is not configured`; the Task 6B focused tests passed.
+- Focused Vitest passed: 7 tests (`payment-plan-editor`, `quote-editor`, `admin-payment-plan-save`).
+- `npm run build` passed. Existing Vite dynamic-import/chunk-size warnings remain.
+- `git diff --check` is run before commit.
 
-## Non-local database/Deno gap
+## Environment limitations
 
-- The required local SQL/RPC script was not run: `npx supabase status` reports Docker/Podman unavailable, so no local database can be started.
-- Deno is not installed/on PATH in this environment, so the Deno order-document tests could not be executed here.
-- No deployment, push, or main-worktree edits were performed.
+- Local SQL/RPC execution is unavailable: `npx supabase status` reports Docker and Podman are not installed/on `PATH`. The two-session SQL test is included for a disposable database with two psql sessions.
+- Deno is unavailable on `PATH`, so the order-document Deno test could not be executed in this worktree.
+- No deployment, push, or main-worktree edit was performed.

@@ -74,7 +74,8 @@ begin
   end if;
 
   perform public.issue_payment_plan_invoice(v_order, v_draft_invoice);
-  -- Concurrency proof: every mark-paid call takes the same order → schedule (id order) → invoice locks, so a second final payment waits, re-reads the now-paid schedule, then alone completes the order.
+  -- Multi-session lock-order coverage lives in payment_plan_lock_order_two_session.sql.
+  -- This single session verifies the overdue lifecycle only; it cannot prove concurrency.
   update public.payment_plan_instalments set status = 'overdue' where id = v_draft_instalment;
   if (select status from public.invoices where id = v_draft_invoice) <> 'issued' then raise exception 'overdue is an instalment state; invoice must remain issued'; end if;
   perform public.mark_payment_plan_invoice_paid(v_draft_invoice, now(), 'overdue balance received');
