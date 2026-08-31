@@ -1,69 +1,95 @@
--- Document-generation final-document lock and ownership-race regression.
+-- Deterministic document-generation final-lock and ownership-race regression.
 -- Run after `supabase db reset` against a disposable database in TWO psql
--- sessions. Use an existing confirmed quote (or issued/paid invoice) for
--- `document_id`, its present order for `order_id`, and a second valid order for
--- `other_order_id` when exercising the ownership-race case.
+-- sessions. The commands below are written for a confirmed quote. To exercise
+-- the invoice path, replace `public.quotes` with `public.invoices` and require
+-- `status in ('issued', 'paid')` wherever the quote status is checked.
 --
--- \set order_id '...'
--- \set other_order_id '...'
--- \set document_type 'quote'       -- quote or invoice
--- \set document_id '...'
+-- \set order_id '...'        -- the quote's current order
+-- \set other_order_id '...'  -- another disposable-fixture order
+-- \set document_id '...'     -- a confirmed quote id
 --
--- Safety invariant: both document generation and payment-plan lifecycle code
--- lock order, then schedule rows (id ASC), then the final document exclusively.
--- There is never a final-document FOR SHARE lock that must be upgraded.
+-- Production invariant: document generation takes exclusive locks in this
+-- order: order, schedule rows (id ASC), final quote/invoice. There is never a
+-- final-document FOR SHARE lock to upgrade.
 --
--- A. Final-document lock contention (quote form shown; substitute invoices for
---    the invoice form). Session A locks the exact final document after holding
---    the common prefix, so Session B can only time out on an exclusive lock and
---    succeeds after A commits.
+-- A. Prove the final document—not the common prefix—is the contended lock.
 --
--- Session A
+-- Session A, stage 1: exercise and release the common prefix. This makes the
+-- handoff explicit: B will not be blocked on order/schedule in stage 2.
 begin;
 select 1 from public.orders where id = :'order_id'::uuid for update;
 select 1 from public.payment_plan_instalments
 where order_id = :'order_id'::uuid order by id for update;
-select 1 from public.quotes
-where id = :'document_id'::uuid and order_id = :'order_id'::uuid for update;
--- Keep this transaction open while Session B runs.
+commit;
 
--- Session B (expected: ERROR: canceling statement due to lock timeout)
+-- Session A, stage 2: hold ONLY the final quote row. Keep this transaction
+-- open until Session B records its expected timeout.
+begin;
+select 1 from public.quotes
+where id = :'document_id'::uuid
+  and order_id = :'order_id'::uuid
+  and status = 'confirmed'
+for update;
+-- Observation: this transaction has no order/schedule row locks.
+
+-- Session B: the RPC can acquire order and schedule locks because stage 1 was
+-- committed. Its 250ms timeout is therefore specifically the final quote row.
 begin;
 set local request.jwt.claim.role = 'service_role';
 set local lock_timeout = '250ms';
-select public.load_authorised_order_document(:'document_type', :'document_id'::uuid, null);
+select public.load_authorised_order_document('quote', :'document_id'::uuid, null);
+-- Expected: ERROR: canceling statement due to lock timeout.
+-- Do not retry until Session A commits.
 rollback;
 
 -- Session A
 commit;
 
--- Session B retry (expected: one authorised payload row)
+-- Session B: retry after the final row is released.
 begin;
 set local request.jwt.claim.role = 'service_role';
-select public.load_authorised_order_document(:'document_type', :'document_id'::uuid, null);
+select public.load_authorised_order_document('quote', :'document_id'::uuid, null);
+-- Expected: exactly one authorised payload row.
 rollback;
 
--- B. Ownership/order race. This proves the final select is constrained to the
---    locked order rather than trusting its pre-lock document read.
+-- B. Prove an order reassignment between the initial read and final document
+-- lock fails closed. Session A's old-order lock forces B to finish its unlocked
+-- pre-read before it can take the common prefix.
 --
--- Session A: lock the original order before Session B starts.
+-- Session A
 begin;
+select pg_backend_pid() as a_pid \gset
 select 1 from public.orders where id = :'order_id'::uuid for update;
+-- Leave this transaction open.
 
--- Session B: start this call; it reads the document, then blocks on Session A's
---    order lock.
+-- Session B: first report this session's PID to A, then start the RPC. It will
+-- block at the old-order FOR UPDATE after its initial no-lock document read.
+select pg_backend_pid() as b_pid \gset
+-- Copy :b_pid to Session A: \set b_pid '<value>'
 begin;
 set local request.jwt.claim.role = 'service_role';
-select public.load_authorised_order_document(:'document_type', :'document_id'::uuid, null);
--- Expected after Session A commits: "Only confirmed quotes ..." for a quote,
--- or "Only issued or paid invoices ..." for an invoice. It must not return a
--- payload belonging to other_order_id.
-rollback;
+select public.load_authorised_order_document('quote', :'document_id'::uuid, null);
+-- This statement blocks until Session A commits; do not issue ROLLBACK yet.
 
--- Session A: while B waits, move the final document to the different order,
--- then commit. Use only a disposable fixture; restore/rollback afterwards.
-update public.quotes set order_id = :'other_order_id'::uuid
-where :'document_type' = 'quote' and id = :'document_id'::uuid;
-update public.invoices set order_id = :'other_order_id'::uuid
-where :'document_type' = 'invoice' and id = :'document_id'::uuid;
+-- Session A: wait for the explicit handshake observation before changing data.
+-- It proves B is active and waiting on the common order lock, which comes after
+-- the RPC's initial unlocked document/order/customer reads.
+select state, wait_event_type, wait_event
+from pg_stat_activity
+where pid = :'b_pid'::integer;
+-- Expected: state = active and wait_event_type = Lock.
+
+-- Session A: move the quote while B is known to be blocked, then release the
+-- old-order lock. This is a disposable-fixture mutation.
+update public.quotes
+set order_id = :'other_order_id'::uuid
+where id = :'document_id'::uuid
+  and order_id = :'order_id'::uuid;
 commit;
+
+-- Session B resumes, re-locks/re-authorizes the original order/customer, then
+-- its final `FOR UPDATE` select is constrained to that locked order.
+-- Expected: ERROR: Only confirmed quotes can be downloaded or emailed.
+-- It must never return a payload for other_order_id. Clean up the aborted B
+-- transaction, then reset/reseed the disposable fixture before another run.
+rollback;

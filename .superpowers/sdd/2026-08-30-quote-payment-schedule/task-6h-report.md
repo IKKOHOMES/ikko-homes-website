@@ -24,4 +24,9 @@
 - The document RPC now re-locks the current order and customer after the common order lock, reruns ownership authorization, and constrains the final quote/invoice `FOR UPDATE` lookup to that locked order.
 - `document_generation_lock_order_two_session.sql` now gives executable two-session commands for final-document exclusive-lock contention and the document-to-different-order race.
 
-Verification: `git diff --check` and `npm run build` passed. Database lint and SQL execution remain blocked by the missing local Docker/Postgres runtime.
+Verification: `git diff --check` and `npm run build` passed for the review follow-up.
+
+## Final fixture handshake follow-up (2026-09-01)
+
+- Reworked the two-session lock fixture so Part A releases the common order/schedule prefix before A holds only the final document row; B's timeout is therefore attributable to the final row, and the post-commit retry has an explicit success expectation.
+- Part B now captures B's backend PID and requires A to observe B waiting on the old-order lock before reassignment. This proves B completed the unlocked pre-read before the final locked-order revalidation fails closed.
