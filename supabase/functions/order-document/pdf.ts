@@ -28,7 +28,12 @@ export type OrderPdfInput = {
   expiresOn?: string | null;
   dueOn?: string | null;
   customer: { name: string; email: string; phone: string; address: string };
-  studio: { address: string; email: string; phone: string };
+  studio: {
+    address: string;
+    email: string;
+    phone: string;
+    abn?: string | null;
+  };
   lines: OrderPdfLine[];
   subtotal: number;
   discountTotal: number;
@@ -44,11 +49,12 @@ const PAGE_HEIGHT = 841.89;
 const MARGIN = 42;
 export const SCHEDULE_CONTENT_START_Y = PAGE_HEIGHT - 135;
 
-const charcoal = rgb(0.14, 0.13, 0.12);
-const muted = rgb(0.37, 0.34, 0.31);
-const orange = rgb(0.945, 0.35, 0.212);
-const cream = rgb(0.969, 0.957, 0.937);
+const charcoal = rgb(35 / 255, 34 / 255, 32 / 255);
+const muted = rgb(112 / 255, 107 / 255, 101 / 255);
+const orange = rgb(237 / 255, 110 / 255, 58 / 255);
+const cream = rgb(248 / 255, 246 / 255, 242 / 255);
 const white = rgb(1, 1, 1);
+const line = rgb(227 / 255, 223 / 255, 218 / 255);
 const logoPath = "site-assets/brand/ikko-logo-header.png";
 export const SCHEDULE_FOOTER_SAFETY_Y = 112;
 export function scheduleHeaderLayout(y: number) {
@@ -64,6 +70,7 @@ export function scheduleHeaderLayout(y: number) {
 const SCHEDULE_LINE_HEIGHT = 11;
 const SCHEDULE_ROW_TOP_PADDING = 13;
 const SCHEDULE_MIN_ROW_HEIGHT = 24;
+export const ITEM_FOOTER_SAFETY_Y = 112;
 
 export function scheduleRowHeight(descriptionLineCount: number) {
   return Math.max(
@@ -75,6 +82,13 @@ export function scheduleRowHeight(descriptionLineCount: number) {
 export function scheduleSegmentLineCapacity(y: number) {
   return Math.floor(
     (y - SCHEDULE_FOOTER_SAFETY_Y - SCHEDULE_ROW_TOP_PADDING) /
+      SCHEDULE_LINE_HEIGHT,
+  );
+}
+
+export function itemSegmentLineCapacity(y: number) {
+  return Math.floor(
+    (y - ITEM_FOOTER_SAFETY_Y - SCHEDULE_ROW_TOP_PADDING) /
       SCHEDULE_LINE_HEIGHT,
   );
 }
@@ -392,106 +406,169 @@ export async function buildOrderPdf(
     color: muted,
   });
   y -= 18;
-  for (const [lineIndex, line] of input.lines.entries()) {
-    const description = line.finish
-      ? `${line.description} - ${line.finish}`
-      : line.description;
-    const wrapped = splitText(description, sans, 9, 260);
-    const rowHeight = Math.max(24, wrapped.length * 11 + 13);
-
-    // Keep a complete row together and carry every remaining item to a
-    // continuation page. There is deliberately no item-count limit here.
-    if (y - rowHeight < 165) {
-      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      page.drawRectangle({
-        x: 0,
-        y: 0,
-        width: PAGE_WIDTH,
-        height: PAGE_HEIGHT,
-        color: cream,
-      });
-      page.drawImage(logo, {
-        x: MARGIN,
-        y: PAGE_HEIGHT - 79,
-        width: logo.width * logoScale,
-        height: logo.height * logoScale,
-      });
-      page.drawText("ITEMS CONTINUED", {
-        x: MARGIN,
-        y: PAGE_HEIGHT - 105,
-        size: 7.5,
-        font: bold,
-        color: orange,
-      });
-      page.drawRectangle({
-        x: MARGIN,
-        y: PAGE_HEIGHT - 142,
-        width: PAGE_WIDTH - MARGIN * 2,
-        height: 22,
-        color: charcoal,
-      });
-      ["#", "ITEM & DESCRIPTION", "QUANTITY", "RATE", "AMOUNT"].forEach((
-        label,
-        index,
-      ) =>
-        page.drawText(label, {
-          x: [
-            MARGIN + 8,
-            columns.description,
-            columns.quantity,
-            columns.price,
-            columns.total,
-          ][index],
-          y: PAGE_HEIGHT - 134,
-          size: 7.5,
-          font: bold,
-          color: white,
-        })
-      );
-      y = PAGE_HEIGHT - 160;
-    }
-
-    page.drawText(String(lineIndex + 1), {
-      x: MARGIN + 8,
-      y,
-      size: 9,
-      font: sans,
-      color: muted,
+  const studioAbn = input.studio.abn?.trim();
+  const drawFooter = (target: PDFPage) => {
+    target.drawLine({
+      start: { x: MARGIN, y: 72 },
+      end: { x: PAGE_WIDTH - MARGIN, y: 72 },
+      thickness: 0.7,
+      color: line,
     });
-    wrapped.forEach((part, index) =>
-      page.drawText(part, {
-        x: columns.description,
-        y: y - index * 11,
-        size: 9,
-        font: sans,
-        color: charcoal,
-      })
-    );
-    page.drawText(String(line.quantity), {
-      x: columns.quantity + 4,
-      y,
-      size: 9,
+    target.drawText(input.studio.phone, {
+      x: MARGIN,
+      y: 56,
+      size: 7.5,
       font: sans,
       color: charcoal,
     });
+    target.drawText(input.studio.email, {
+      x: 150,
+      y: 56,
+      size: 7.5,
+      font: sans,
+      color: charcoal,
+    });
+    if (studioAbn) {
+      target.drawText(studioAbn, {
+        x: 302,
+        y: 56,
+        size: 7.5,
+        font: sans,
+        color: charcoal,
+      });
+    }
+    const addressWidth = sans.widthOfTextAtSize(input.studio.address, 7.5);
+    target.drawText(input.studio.address, {
+      x: PAGE_WIDTH - MARGIN - addressWidth,
+      y: 56,
+      size: 7.5,
+      font: sans,
+      color: charcoal,
+    });
+  };
+  drawFooter(page);
+  const drawItemContinuationPage = () => {
+    page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: PAGE_WIDTH,
+      height: PAGE_HEIGHT,
+      color: cream,
+    });
+    page.drawImage(logo, {
+      x: MARGIN,
+      y: PAGE_HEIGHT - 79,
+      width: logo.width * logoScale,
+      height: logo.height * logoScale,
+    });
+    drawFooter(page);
+    page.drawText("ITEMS CONTINUED", {
+      x: MARGIN,
+      y: PAGE_HEIGHT - 105,
+      size: 7.5,
+      font: bold,
+      color: orange,
+    });
+    page.drawRectangle({
+      x: MARGIN,
+      y: PAGE_HEIGHT - 142,
+      width: PAGE_WIDTH - MARGIN * 2,
+      height: 22,
+      color: charcoal,
+    });
+    ["#", "ITEM & DESCRIPTION", "QUANTITY", "RATE", "AMOUNT"].forEach((
+      label,
+      index,
+    ) =>
+      page.drawText(label, {
+        x: [
+          MARGIN + 8,
+          columns.description,
+          columns.quantity,
+          columns.price,
+          columns.total,
+        ][index],
+        y: PAGE_HEIGHT - 134,
+        size: 7.5,
+        font: bold,
+        color: white,
+      })
+    );
+    y = PAGE_HEIGHT - 160;
+  };
+  for (const [lineIndex, line] of input.lines.entries()) {
+    const description = line.finish
+      ? line.description + " - " + line.finish
+      : line.description;
+    const remainingDescriptionLines = splitText(description, sans, 9, 260);
     const unitPrice = line.isTbd
       ? "T.B.D."
-      : `${amount(line.unitPrice)}${line.unit ? ` / ${line.unit}` : ""}`;
-    page.drawText(unitPrice, {
-      x: columns.price,
-      y,
-      size: 8.5,
-      font: sans,
-      color: line.isTbd ? orange : charcoal,
-    });
-    page.drawText(lineAmount(line), {
-      x: columns.total,
-      y,
-      size: 8.5,
-      font: bold,
-      color: line.isTbd ? orange : charcoal,
-    });
-    y -= rowHeight;
+      : amount(line.unitPrice) + (line.unit ? " / " + line.unit : "");
+    while (remainingDescriptionLines.length) {
+      const fullRowHeight = Math.max(
+        24,
+        remainingDescriptionLines.length * SCHEDULE_LINE_HEIGHT +
+          SCHEDULE_ROW_TOP_PADDING,
+      );
+      if (y - fullRowHeight < ITEM_FOOTER_SAFETY_Y) {
+        drawItemContinuationPage();
+      }
+      let availableLineCount = itemSegmentLineCapacity(y);
+      if (availableLineCount < 1) {
+        drawItemContinuationPage();
+        availableLineCount = itemSegmentLineCapacity(y);
+      }
+      const descriptionLines = remainingDescriptionLines.splice(
+        0,
+        availableLineCount,
+      );
+      const rowHeight = Math.max(
+        24,
+        descriptionLines.length * SCHEDULE_LINE_HEIGHT +
+          SCHEDULE_ROW_TOP_PADDING,
+      );
+      page.drawText(String(lineIndex + 1), {
+        x: MARGIN + 8,
+        y,
+        size: 9,
+        font: sans,
+        color: muted,
+      });
+      descriptionLines.forEach((part, index) =>
+        page.drawText(part, {
+          x: columns.description,
+          y: y - index * SCHEDULE_LINE_HEIGHT,
+          size: 9,
+          font: sans,
+          color: charcoal,
+        })
+      );
+      // Repeat commercial context for every streamed segment so an item
+      // cannot become ambiguous when its description continues on a new page.
+      page.drawText(String(line.quantity), {
+        x: columns.quantity + 4,
+        y,
+        size: 9,
+        font: sans,
+        color: charcoal,
+      });
+      page.drawText(unitPrice, {
+        x: columns.price,
+        y,
+        size: 8.5,
+        font: sans,
+        color: line.isTbd ? orange : charcoal,
+      });
+      page.drawText(lineAmount(line), {
+        x: columns.total,
+        y,
+        size: 8.5,
+        font: bold,
+        color: line.isTbd ? orange : charcoal,
+      });
+      y -= rowHeight;
+    }
   }
   const newContentPage = () => {
     page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
@@ -508,6 +585,7 @@ export async function buildOrderPdf(
       width: logo.width * logoScale,
       height: logo.height * logoScale,
     });
+    drawFooter(page);
     page.drawText(documentTitle, {
       x: PAGE_WIDTH - MARGIN - titleWidth,
       y: PAGE_HEIGHT - 63,
@@ -680,35 +758,7 @@ export async function buildOrderPdf(
     color: muted,
     lineHeight: 12,
   });
-  page.drawLine({
-    start: { x: MARGIN, y: 72 },
-    end: { x: PAGE_WIDTH - MARGIN, y: 72 },
-    thickness: 0.7,
-    color: muted,
-  });
-  page.drawText(input.studio.phone, {
-    x: MARGIN,
-    y: 56,
-    size: 7.5,
-    font: sans,
-    color: charcoal,
-  });
-  const emailWidth = sans.widthOfTextAtSize(input.studio.email, 7.5);
-  page.drawText(input.studio.email, {
-    x: (PAGE_WIDTH - emailWidth) / 2,
-    y: 56,
-    size: 7.5,
-    font: sans,
-    color: charcoal,
-  });
-  const addressWidth = sans.widthOfTextAtSize(input.studio.address, 7.5);
-  page.drawText(input.studio.address, {
-    x: PAGE_WIDTH - MARGIN - addressWidth,
-    y: 56,
-    size: 7.5,
-    font: sans,
-    color: charcoal,
-  });
+  drawFooter(page);
 
   return {
     bytes: await pdf.save(),

@@ -72,6 +72,7 @@ async function studioDetails(admin: SupabaseClient) {
     address: data.studio_address,
     email: data.studio_email,
     phone: data.studio_phone,
+    abn: Deno.env.get("IKKO_HOMES_ABN")?.trim() || null,
   };
 }
 

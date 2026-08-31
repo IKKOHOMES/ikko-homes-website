@@ -378,3 +378,101 @@ Deno.test("keeps every tall schedule segment above the footer safety boundary", 
   }
   assert(segments >= 2);
 });
+
+Deno.test("streams a single page-tall item across continuation pages without losing its commercial context", async () => {
+  Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
+  const tokens = Array.from(
+    { length: 220 },
+    (_, index) => `TallItemToken${String(index + 1).padStart(3, "0")}`,
+  );
+  const result = await buildOrderPdf({
+    documentType: "quote",
+    number: "IKKO2026080102",
+    issuedOn: "2026-08-30",
+    customer: {
+      name: "Tall Item Customer",
+      email: "tall-item@example.com",
+      phone: "0400 000 000",
+      address: "69 Patricia Loop",
+    },
+    studio: {
+      address: "69 Patricia Loop, Keysborough VIC 3173",
+      email: "info@ikkohomes.com.au",
+      phone: "0490 384 021",
+    },
+    lines: [{
+      description: tokens.join(" "),
+      quantity: 2,
+      unitPrice: 1234.5,
+      unit: "each",
+    }],
+    subtotal: 2469,
+    discountTotal: 0,
+    gstTotal: 246.9,
+    totalDue: 2715.9,
+  });
+  const document = await PDFDocument.load(result.bytes);
+  const text = await extractPdfText(document);
+  const pages = await extractPdfPageText(document);
+  assert(document.getPageCount() >= 3);
+  for (const token of tokens) assert(text.includes(token));
+  const continuationPages = pages.filter((page) =>
+    page.includes("ITEMS CONTINUED")
+  );
+  assert(continuationPages.length >= 2);
+  for (const page of continuationPages) {
+    for (
+      const header of ["#", "ITEM & DESCRIPTION", "QUANTITY", "RATE", "AMOUNT"]
+    ) {
+      assert(page.includes(header));
+    }
+    assert(page.includes("2"));
+    assert(page.includes("$1,234.50 / each"));
+    assert(page.includes("$2,469.00"));
+  }
+});
+
+Deno.test("renders configured studio contact and ABN alongside the approved IKKO palette", async () => {
+  Deno.env.set("SUPABASE_URL", "https://jryybnersfuhaloxkhov.supabase.co");
+  const result = await buildOrderPdf({
+    documentType: "quote",
+    number: "IKKO2026080103",
+    issuedOn: "2026-08-30",
+    customer: {
+      name: "Brand Customer",
+      email: "brand@example.com",
+      phone: "0400 000 000",
+      address: "69 Patricia Loop",
+    },
+    studio: {
+      address: "69 Patricia Loop, Keysborough VIC 3173",
+      email: "info@ikkohomes.com.au",
+      phone: "0490 384 021",
+      abn: "ABN 12 345 678 901",
+    },
+    lines: [{ description: "Brand fixture", quantity: 1, unitPrice: 100 }],
+    subtotal: 100,
+    discountTotal: 0,
+    gstTotal: 10,
+    totalDue: 110,
+  });
+  const text = await extractPdfText(await PDFDocument.load(result.bytes));
+  for (
+    const value of [
+      "69 Patricia Loop, Keysborough VIC 3173",
+      "info@ikkohomes.com.au",
+      "0490 384 021",
+      "ABN 12 345 678 901",
+    ]
+  ) assert(text.includes(value));
+  for (
+    const color of [
+      "0.13725490196078433 0.13333333333333333 0.12549019607843137 rg",
+      "0.9725490196078431 0.9647058823529412 0.9490196078431372 rg",
+      "1 1 1 rg",
+      "0.9294117647058824 0.43137254901960786 0.22745098039215686 rg",
+      "0.4392156862745098 0.4196078431372549 0.396078431372549 rg",
+      "0.8901960784313725 0.8745098039215686 0.8549019607843137 RG",
+    ]
+  ) assert(text.includes(color));
+});
