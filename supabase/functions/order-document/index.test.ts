@@ -33,7 +33,7 @@ Deno.test("uses an allocated quote number for a legacy quote PDF input", async (
   const admin = {
     from(table: string) {
       if (table === "quotes") return { select: () => ({ eq: () => ({ single: async () => ({ data: quote, error: null }) }) }) };
-      if (table === "payment_plan_instalments") return { select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }) };
+      if (table === "quote_payment_schedule_snapshots") return { select: () => ({ eq: () => ({ single: async () => ({ data: { payment_schedule: [] }, error: null }) }) }) };
       return { select: () => ({ eq: () => ({ single: async () => ({ data: {
         studio_address: "69 Patricia Loop", studio_email: "accounts@ikkohomes.com", studio_phone: "0490 384 021",
       }, error: null }) }) }) };
@@ -61,29 +61,14 @@ Deno.test("denies a customer access to another customer's order document", () =>
   );
 });
 
-Deno.test("authorises ownership before loading a legacy quote or allocating its number", async () => {
-  let quoteSelects = 0;
-  let numberAllocations = 0;
+Deno.test("authorises ownership inside the final document RPC before allocating a legacy quote number", async () => {
+  let documentLoads = 0;
   const admin = {
-    from(table: string) {
-      assertEquals(table, "quotes");
-      return {
-        select: () => {
-          quoteSelects += 1;
-          return {
-            eq: () => ({
-              single: async () => ({
-                data: { orders: { customers: { auth_user_id: "customer-2" } } },
-                error: null,
-              }),
-            }),
-          };
-        },
-      };
-    },
-    rpc: async () => {
-      numberAllocations += 1;
-      return { data: "IKKO2026080042", error: null };
+    from: () => { throw new Error('table loads must not run before the bounded RPC'); },
+    rpc: async (name: string) => {
+      assertEquals(name, 'load_authorised_order_document');
+      documentLoads += 1;
+      return { data: null, error: { message: 'Unauthorised.' } };
     },
   } as unknown as SupabaseClient;
 
@@ -97,9 +82,9 @@ Deno.test("authorises ownership before loading a legacy quote or allocating its 
     Error,
     "Unauthorised.",
   );
-  assertEquals(quoteSelects, 1);
-  assertEquals(numberAllocations, 0);
+  assertEquals(documentLoads, 1);
 });
+
 Deno.test("allows an explicit administrator to access any order document", () => {
   assertDocumentAccess({ id: "admin-1", isAdmin: true }, { customerAuthUserId: "customer-1" });
 });
@@ -145,4 +130,35 @@ Deno.test("uses the invoice issuance timestamp as the PDF issue date", async () 
 
   const loaded = await loadInvoicePdfInput(admin, "invoice-1");
   assertEquals(loaded.input.issuedOn, invoice.issued_at);
+});
+
+Deno.test('loads the final document payload through one authorisation-bounded RPC', async () => {
+  const admin = {
+    from: () => { throw new Error('final document data must not be loaded through unbounded table queries'); },
+    rpc: async (name: string, params: Record<string, unknown>) => {
+      assertEquals(name, 'load_authorised_order_document');
+      assertEquals(params, { p_document_type: 'invoice', p_document_id: 'invoice-1', p_caller_id: 'customer-1', p_is_admin: false });
+      return { data: {
+        orderId: 'order-1', recipientEmail: 'client@example.com', customerAuthUserId: 'customer-1',
+        input: { documentType: 'invoice', number: 'IKKO-1001', issuedOn: '2026-09-01', dueOn: '2026-10-01', invoiceStatus: 'issued', customer: { name: 'Aiko', email: 'client@example.com', phone: '0400', address: '1 Studio Lane' }, studio: { address: 'Studio', email: 'studio@example.com', phone: '0401', abn: null }, lines: [], subtotal: 100, discountTotal: 0, gstTotal: 10, totalDue: 110, invoiceMilestone: null },
+      }, error: null };
+    },
+  } as unknown as SupabaseClient;
+
+  const loaded = await loadAuthorisedOrderDocument({ id: 'customer-1', isAdmin: false }, 'invoice', 'invoice-1', admin);
+  assertEquals(loaded.orderId, 'order-1');
+  assertEquals(loaded.input.invoiceStatus, 'issued');
+});
+
+Deno.test('does not generate a document when the final bounded load rejects a void invoice', async () => {
+  const admin = {
+    from: () => { throw new Error('must not load an invoice after the bounded RPC rejects it'); },
+    rpc: async () => ({ data: null, error: { message: 'Only issued or paid invoices can be downloaded or emailed.' } }),
+  } as unknown as SupabaseClient;
+
+  await assertRejects(
+    () => loadAuthorisedOrderDocument({ id: 'customer-1', isAdmin: false }, 'invoice', 'invoice-1', admin),
+    Error,
+    'Only issued or paid invoices can be downloaded or emailed.',
+  );
 });

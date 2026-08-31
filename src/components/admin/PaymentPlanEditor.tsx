@@ -5,7 +5,7 @@ type EditablePaymentPlanInstalment = PaymentPlanDraft & { status?: 'draft' | 'is
 export function PaymentPlanEditor({ quoteTotal, instalments, onSave, onSync }: {
   quoteTotal: number;
   instalments: EditablePaymentPlanInstalment[];
-  onSave: (instalments: PaymentPlanDraft[]) => Promise<void>;
+  onSave: (instalments: PaymentPlanDraft[]) => Promise<PaymentPlanDraft[]>;
   onSync: () => Promise<void> | void;
 }) {
   const [lines, setLines] = useState(instalments);
@@ -17,7 +17,7 @@ export function PaymentPlanEditor({ quoteTotal, instalments, onSave, onSync }: {
   const updatePercent = (index: number, percentage: number) => { try { setLines((current) => updateSchedulePercent(current, index, percentage, quoteTotal)); setError(''); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update instalment.'); } };
   const updateAmount = (index: number, amount: number) => { try { setLines((current) => updateScheduleAmount(current, index, amount, quoteTotal)); setError(''); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update instalment.'); } };
   const move = (index: number, offset: number) => setLines((current) => { const next = [...current]; const target = index + offset; if (target < 0 || target >= next.length) return current; [next[index], next[target]] = [next[target], next[index]]; return next; });
-  const save = async (event: FormEvent) => { event.preventDefault(); if (!validation.valid) { setError(validation.message); return; } setSaving(true); setError(''); try { await onSave(lines); setSavedLines(JSON.stringify(lines)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save the payment schedule.'); } finally { setSaving(false); } };
+  const save = async (event: FormEvent) => { event.preventDefault(); if (!validation.valid) { setError(validation.message); return; } setSaving(true); setError(''); try { const saved = await onSave(lines); setLines(saved); setSavedLines(JSON.stringify(saved)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save the payment schedule.'); } finally { setSaving(false); } };
   const isSaved = savedLines === JSON.stringify(lines);
   const sync = async () => { setSaving(true); setError(''); try { await onSync(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to synchronise invoice drafts.'); } finally { setSaving(false); } };
   return <form className="payment-plan-editor" onSubmit={(event) => void save(event)}><div><p className="eyebrow">Payment plan</p><h2>Schedule instalments</h2><p>Confirmed quote total: <b>${quoteTotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p></div>

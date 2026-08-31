@@ -98,48 +98,32 @@ export function assertInvoiceDocumentLifecycle(status: unknown) {
   }
 }
 
-export type DocumentAccess = {
-  customerAuthUserId: string;
-  invoiceStatus?: unknown;
-};
-
-export async function loadDocumentAccess(
-  admin: SupabaseClient,
-  documentType: DocumentType,
-  documentId: string,
-): Promise<DocumentAccess> {
-  const fields = documentType === "invoice"
-    ? "status, orders(customers(auth_user_id))"
-    : "orders(customers(auth_user_id))";
-  const { data, error } = await admin.from(
-    documentType === "quote" ? "quotes" : "invoices",
-  ).select(fields).eq("id", documentId).single();
-  if (error || !data) throw new Error("Unable to load the document.");
-
-  const document = asRecord(data);
-  const order = asRecord(firstRow(document.orders));
-  const customer = asRecord(firstRow(order.customers));
-  return {
-    customerAuthUserId: asString(customer.auth_user_id),
-    invoiceStatus: documentType === "invoice" ? document.status : undefined,
-  };
-}
-
 export async function loadAuthorisedOrderDocument(
   caller: DocumentCaller,
   documentType: DocumentType,
   documentId: string,
   admin: SupabaseClient,
 ): Promise<LoadedOrderDocument> {
-  const access = await loadDocumentAccess(admin, documentType, documentId);
-  assertDocumentAccess(caller, access);
-  if (documentType === "invoice") {
-    assertInvoiceDocumentLifecycle(access.invoiceStatus);
+  const { data, error } = await admin.rpc('load_authorised_order_document', {
+    p_document_type: documentType,
+    p_document_id: documentId,
+    p_caller_id: caller.id,
+    p_is_admin: caller.isAdmin,
+  });
+  if (error || !data) throw new Error(error?.message || 'Unable to load the document.');
+  const payload = asRecord(firstRow(data));
+  const input = asRecord(payload.input);
+  if (input.documentType !== documentType || !asString(payload.orderId) || !asString(payload.recipientEmail) || !asString(payload.customerAuthUserId) || !asString(input.number)) {
+    throw new Error('Unable to load the document.');
   }
-  return documentType === "quote"
-    ? await loadQuotePdfInput(admin, documentId)
-    : await loadInvoicePdfInput(admin, documentId);
+  return {
+    orderId: asString(payload.orderId),
+    recipientEmail: asString(payload.recipientEmail),
+    customerAuthUserId: asString(payload.customerAuthUserId),
+    input: input as unknown as OrderPdfInput,
+  };
 }
+
 export async function loadQuotePdfInput(
   admin: SupabaseClient,
   quoteId: string,
@@ -149,8 +133,8 @@ export async function loadQuotePdfInput(
   ).eq("id", quoteId).single();
   if (error || !data) throw new Error("Unable to load the quote.");
   const quote = asRecord(data);
-  const { data: schedule, error: scheduleError } = await admin.from("payment_plan_instalments").select("quote_id, label, percentage, amount, due_on, status, quotes(version)").eq("order_id", asString(quote.order_id)).order("sequence");
-  if (scheduleError) throw new Error("Unable to load the payment schedule.");
+  const { data: snapshot, error: snapshotError } = await admin.from("quote_payment_schedule_snapshots").select("payment_schedule").eq("quote_id", quoteId).single();
+  if (snapshotError || !snapshot) throw new Error("Unable to load the payment schedule.");
   const order = asRecord(firstRow(quote.orders));
   const customer = asRecord(firstRow(order.customers));
   const email = asString(customer.email);
@@ -195,13 +179,13 @@ export async function loadQuotePdfInput(
       discountTotal: asNumber(quote.discount_total),
       gstTotal: asNumber(quote.gst_total),
       totalDue: asNumber(quote.total),
-      paymentSchedule: asRows(schedule).filter((line) => { const row = asRecord(line); const linkedQuote = asRecord(firstRow(row.quotes)); return asString(row.quote_id) === quoteId || (asString(row.status) !== "draft" && asNumber(linkedQuote.version) <= asNumber(quote.version)); }).map((line) => {
+      paymentSchedule: asRows(asRecord(snapshot).payment_schedule).map((line) => {
         const row = asRecord(line);
         return {
-          description: asString(row.label),
+          description: asString(row.description),
           percentage: asNumber(row.percentage),
           amount: asNumber(row.amount),
-          dueOn: asString(row.due_on),
+          dueOn: asString(row.dueOn),
           status: asString(row.status),
         };
       }),
@@ -258,10 +242,10 @@ export async function loadInvoicePdfInput(
         const row = asRecord(firstRow(invoice.payment_plan_instalments));
         return Object.keys(row).length
           ? {
-            description: asString(row.label),
+            description: asString(row.description),
             percentage: asNumber(row.percentage),
             amount: asNumber(row.amount),
-            dueOn: asString(row.due_on),
+            dueOn: asString(row.dueOn),
             status: asString(row.status),
           }
           : null;

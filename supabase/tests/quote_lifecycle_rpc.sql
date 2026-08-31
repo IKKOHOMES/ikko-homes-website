@@ -15,6 +15,7 @@ declare
   v_draft_invoice uuid;
   v_number text;
   v_legacy_revision uuid;
+  v_quote_v4 uuid;
 begin
   insert into public.customers (first_name, last_name, email, phone, address)
     values ('Lifecycle', 'Test', 'lifecycle-' || gen_random_uuid() || '@example.test', '0400000000', '1 Test Street') returning id into v_customer;
@@ -45,6 +46,17 @@ begin
   insert into public.invoices (invoice_number, order_id, customer_name, customer_email, customer_address, total, status, payment_plan_instalment_id, due_on)
     values ('LIFE-' || gen_random_uuid(), v_order, 'Lifecycle Test', 'lifecycle@example.test', '1 Test Street', 500, 'draft', v_draft_instalment, current_date + 30) returning id into v_draft_invoice;
 
+  -- A revised quote confirmed after an issued invoice must not regress the
+  -- order from invoiced to quoted; final payment can still complete it.
+  insert into public.quotes (order_id, version, status, quote_number_source_id, total, expires_on)
+    values (v_order, 4, 'draft', v_quote_v1, 1000, current_date + 30) returning id into v_quote_v4;
+  insert into public.quote_lines (quote_id, display_name, unit_price, quantity, is_tbd)
+    values (v_quote_v4, 'Lifecycle revision', 1000, 1, false);
+  perform public.confirm_quote(v_order, v_quote_v4);
+  if (select status from public.orders where id = v_order) <> 'invoiced' then
+    raise exception 'confirming a revision regressed an invoiced order';
+  end if;
+
   -- Duplicate submitted IDs could otherwise update one stored draft twice while
   -- the duplicated input total still equals the quote total.
   begin
@@ -65,6 +77,11 @@ begin
   if (select quote_id from public.payment_plan_instalments where id = v_draft_instalment) <> v_quote_v2
     or (select quote_id from public.payment_plan_instalments where id = v_issued_instalment) <> v_quote_v1 then
     raise exception 'schedule revision linkage changed immutable data or missed the draft row';
+  end if;
+  if (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v1) not like '%Balance%'
+    or (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v1) like '%Balance revised%'
+    or (select payment_schedule::text from public.quote_payment_schedule_snapshots where quote_id = v_quote_v2) not like '%Balance revised%' then
+    raise exception 'quote payment schedule snapshots are not revision-stable';
   end if;
 
   -- A mixed paid/draft schedule must keep the order out of completed.

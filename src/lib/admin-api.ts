@@ -133,21 +133,20 @@ export async function confirmQuote(orderId: string, quoteId: string): Promise<vo
   const client = getAdminSupabaseClient();
   const { data: quote, error: quoteError } = await client.from('quotes').select('id, expires_on, quote_lines(display_name, unit_price, quantity, is_tbd)').eq('id', quoteId).eq('order_id', orderId).single();
   if (quoteError || !quote || !quote.expires_on || (quote.quote_lines ?? []).some((line) => line.is_tbd || !line.display_name.trim() || Number(line.unit_price) < 0 || Number(line.quantity) <= 0)) throw new Error('Unable to confirm quotation.');
-  const { error: quoteUpdateError } = await client.from('quotes').update({ status: 'confirmed', confirmed_at: new Date().toISOString() }).eq('id', quoteId);
-  if (quoteUpdateError) throw new Error('Unable to confirm quotation.');
-  const { error: orderError } = await client.from('orders').update({ status: 'quoted' }).eq('id', orderId);
-  if (orderError) throw new Error('Unable to update order status.');
-  const { error: eventError } = await client.from('order_status_events').insert({ order_id: orderId, status: 'quoted', note: 'Quotation confirmed.' });
-  if (eventError) throw new Error('Unable to update order history.');
+  const { error: confirmError } = await client.rpc('confirm_quote', { p_order_id: orderId, p_quote_id: quoteId });
+  if (confirmError) throw new Error('Unable to confirm quotation.');
 }
-export async function savePaymentPlan(orderId: string, quoteId: string, instalments: PaymentPlanDraft[]): Promise<void> {
+export async function savePaymentPlan(orderId: string, quoteId: string, instalments: PaymentPlanDraft[]): Promise<PaymentPlanDraft[]> {
   const client = getAdminSupabaseClient();
   const { data: quote, error: quoteError } = await client.from('quotes').select('id, total, status').eq('id', quoteId).eq('order_id', orderId).single();
   if (quoteError || !quote || quote.status !== 'confirmed') throw new Error('A confirmed quote is required.');
   const validation = validatePaymentPlan(instalments, Number(quote.total));
   if (!validation.valid) throw new Error(validation.message);
-  const { error } = await client.rpc('replace_payment_plan_and_sync_invoices', { p_order_id: orderId, p_quote_id: quoteId, p_instalments: instalments });
+  const { data, error } = await client.rpc('replace_payment_plan_and_sync_invoices', { p_order_id: orderId, p_quote_id: quoteId, p_instalments: instalments });
   if (error) throw new Error(error.message === 'Issued instalments cannot be changed.' ? error.message : 'Unable to save the payment plan.');
+  const persistedIds = Array.isArray(data) ? data.map((row) => typeof row === 'object' && row !== null && typeof (row as { instalment_id?: unknown }).instalment_id === 'string' ? (row as { instalment_id: string }).instalment_id : '') : [];
+  if (persistedIds.length !== instalments.length || persistedIds.some((id) => !id)) throw new Error('Unable to save the payment plan.');
+  return instalments.map((line, index) => ({ ...line, id: persistedIds[index] }));
 }export async function markInvoicePaid(invoiceId: string, paidAt: string, internalNote: string): Promise<void> {
   const client = getAdminSupabaseClient();
   const { error } = await client.rpc('mark_payment_plan_invoice_paid', { p_invoice_id: invoiceId, p_paid_at: paidAt, p_internal_note: internalNote.trim() });

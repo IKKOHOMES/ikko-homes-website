@@ -16,7 +16,7 @@ Deno.test("uses the order payment schedule when a revision links immutable insta
   const admin = {
     from: (table: string) => {
       if (table === "quotes") return { select: () => ({ eq: () => ({ single: async () => ({ data: quote, error: null }) }) }) };
-      if (table === "payment_plan_instalments") return { select: () => ({ eq: () => ({ order: async () => ({ data: instalments, error: null }) }) }) };
+      if (table === "quote_payment_schedule_snapshots") return { select: () => ({ eq: () => ({ single: async () => ({ data: { payment_schedule: instalments.map((line) => ({ description: line.label, percentage: line.percentage, amount: line.amount, dueOn: line.due_on, status: line.status })) }, error: null }) }) }) };
       if (table === "site_settings") return { select: () => ({ eq: () => ({ single: async () => ({ data: { studio_address: "Studio", studio_email: "studio@example.com", studio_phone: "0401" }, error: null }) }) }) };
       throw new Error(`Unexpected table ${table}`);
     },
@@ -44,7 +44,7 @@ Deno.test("does not put a later revision's mutable draft instalment on a histori
   const admin = {
     from: (table: string) => {
       if (table === "quotes") return { select: () => ({ eq: (_field: string, quoteId: keyof typeof quotes) => ({ single: async () => ({ data: quotes[quoteId], error: null }) }) }) };
-      if (table === "payment_plan_instalments") return { select: () => ({ eq: () => ({ order: async () => ({ data: allSchedule, error: null }) }) }) };
+      if (table === "quote_payment_schedule_snapshots") return { select: () => ({ eq: (_field: string, quoteId: keyof typeof quotes) => ({ single: async () => ({ data: { payment_schedule: allSchedule.filter((line) => quoteId === "quote-v1" ? line.quote_id === "quote-v1" : true).map((line) => ({ description: line.label, percentage: line.percentage, amount: line.amount, dueOn: line.due_on, status: line.status })) }, error: null }) }) }) };
       return { select: () => ({ eq: () => ({ single: async () => ({ data: { studio_address: "Studio", studio_email: "studio@example.com", studio_phone: "0401" }, error: null }) }) }) };
     },
     rpc: async () => ({ data: "IKKO2026080001", error: null }),
