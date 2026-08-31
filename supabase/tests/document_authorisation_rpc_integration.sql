@@ -73,5 +73,22 @@ begin
   end if;
 end;
 $$;
-
+-- Customer invoice/line RLS lifecycle contract using PostgREST JWT claim GUCs.
+do $$
+declare v_owner uuid:=gen_random_uuid(); v_customer uuid; v_order uuid; v_issued uuid; v_paid uuid; v_draft uuid; v_void uuid;
+begin
+  insert into auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+  values (v_owner,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','rls-'||v_owner||'@example.test',crypt('password',gen_salt('bf')),now(),'{"provider":"email"}','{}',now(),now());
+  select id into v_customer from public.customers where auth_user_id=v_owner;
+  insert into public.orders(order_number,customer_id,status) values ('RLS-'||gen_random_uuid(),v_customer,'invoiced') returning id into v_order;
+  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-I-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'issued') returning id into v_issued;
+  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-P-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'paid') returning id into v_paid;
+  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-D-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'draft') returning id into v_draft;
+  insert into public.invoices(invoice_number,order_id,customer_name,customer_email,customer_address,total,status) values ('RLS-V-'||gen_random_uuid(),v_order,'Owner','owner@example.test','1 Policy Lane',110,'void') returning id into v_void;
+  insert into public.invoice_lines(invoice_id,display_name,unit_price,quantity) values (v_issued,'Issued',100,1),(v_paid,'Paid',100,1),(v_draft,'Draft',100,1),(v_void,'Void',100,1);
+  perform set_config('request.jwt.claim.role','authenticated',true); perform set_config('request.jwt.claim.sub',v_owner::text,true);
+  if (select count(*) from public.invoices where id in(v_issued,v_paid,v_draft,v_void))<>2 or exists(select 1 from public.invoices where id in(v_draft,v_void)) then raise exception 'customer invoice RLS exposed draft or void'; end if;
+  if (select count(*) from public.invoice_lines where invoice_id in(v_issued,v_paid,v_draft,v_void))<>2 or exists(select 1 from public.invoice_lines where invoice_id in(v_draft,v_void)) then raise exception 'customer invoice-line RLS exposed draft or void'; end if;
+end;
+$$;
 rollback;

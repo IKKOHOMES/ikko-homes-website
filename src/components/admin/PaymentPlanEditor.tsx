@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { updateScheduleAmount, updateSchedulePercent, validatePaymentPlan, type PaymentPlanDraft } from '../../lib/payment-plan';
 type EditablePaymentPlanInstalment = PaymentPlanDraft & { status?: 'draft' | 'issued' | 'paid' | 'overdue' };
 
@@ -12,6 +12,20 @@ export function PaymentPlanEditor({ quoteTotal, instalments, onSave, onSync }: {
   const [savedLines, setSavedLines] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const previousInstalments = useRef(instalments);
+  useEffect(() => {
+    const previous = previousInstalments.current;
+    setLines((current) => {
+      const merged = instalments.map((serverLine) => {
+        const localLine = current.find((line) => line.id && line.id === serverLine.id);
+        const previousLine = previous.find((line) => line.id && line.id === serverLine.id);
+        if (!localLine || !previousLine || JSON.stringify(localLine) === JSON.stringify(previousLine)) return serverLine;
+        return { ...localLine, status: serverLine.status };
+      });
+      return [...merged, ...current.slice(instalments.length).filter((line) => !line.id)];
+    });
+    previousInstalments.current = instalments;
+  }, [instalments]);
   const validation = useMemo(() => validatePaymentPlan(lines, quoteTotal), [lines, quoteTotal]);
   const update = (index: number, value: Partial<PaymentPlanDraft>) => setLines((current) => current.map((line, currentIndex) => currentIndex === index ? { ...line, ...value } : line));
   const lastEditableIndex = (current: EditablePaymentPlanInstalment[]) => current.reduce((last, line, index) => line.status === undefined || line.status === 'draft' ? index : last, -1);

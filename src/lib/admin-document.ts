@@ -26,10 +26,6 @@ function downloadBase64Pdf(document: DownloadableOrderDocument) {
 
 export async function downloadOrderDocument(documentType: OrderDocumentType, documentId: string): Promise<void> {
   const client = getAdminSupabaseClient();
-  if (documentType === 'quote') {
-    const { error: numberError } = await client.rpc('ensure_quote_number', { p_quote_id: documentId });
-    if (numberError) throw new Error('Unable to prepare the document.');
-  }
   const { data, error } = await client.functions.invoke('order-document', { body: { action: 'download', document_type: documentType, document_id: documentId } });
   if (error) throw new Error('Unable to prepare the document.');
   downloadBase64Pdf(normaliseDocumentResponse(data));

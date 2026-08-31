@@ -79,3 +79,12 @@ test('keeps returned persisted IDs for the next save without waiting for a reloa
 
   expect(onSave).toHaveBeenLastCalledWith([expect.objectContaining({ id: 'persisted-deposit' })]);
 });
+test('applies a reloaded issued status without discarding an active draft edit', async () => {
+  const initial = [{ id: 'plan-1', label: 'Deposit', percentage: 100, amount: 1000, dueOn: '2026-09-01', internalNote: '', status: 'draft' as const }];
+  const view = render(<PaymentPlanEditor quoteTotal={1000} instalments={initial} onSave={vi.fn()} onSync={vi.fn()} />);
+  const description = screen.getByRole('textbox', { name: 'Instalment 1 description' });
+  await userEvent.type(description, ' updated');
+  view.rerender(<PaymentPlanEditor quoteTotal={1000} instalments={[{ ...initial[0], status: 'issued' }]} onSave={vi.fn()} onSync={vi.fn()} />);
+  expect(description).toHaveValue('Deposit updated');
+  expect(description).toBeDisabled();
+});
