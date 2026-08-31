@@ -44,3 +44,15 @@
 - Focused Vitest: 7/7 passed.
 - Deno check and frontend build passed. Existing Vite warnings remain.
 - `git diff --check` passed.
+## P2 authorization integration coverage
+
+- Added executable `supabase/tests/document_authorisation_rpc_integration.sql` for a reset local Supabase database or disposable staging database. It creates actual `auth.users`/profiles/customer fixtures and invokes the two-argument RPC under `authenticated` JWT claim GUCs, as PostgREST does.
+- The fixture asserts: an explicit authenticated admin may load a guest order; an authenticated non-admin cannot; a customer can load only their own order; and the obsolete four-argument spoofable signature is absent.
+- Added an Edge-level Deno test that uses the real Supabase client construction with a mocked fetch boundary. It verifies the RPC HTTP request carries `Bearer verified-customer-jwt` and the anon API key, never the service-role credential.
+
+### P2 verification
+
+- Focused Deno tests: 17/17 passed.
+- Focused Vitest: 7/7 passed.
+- Deno check, frontend build, and `git diff --check` passed.
+- The SQL fixture is executable but unrun here because the local Postgres service is unavailable.
