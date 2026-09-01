@@ -2,6 +2,12 @@ import { FormEvent, type ReactNode, useMemo, useState } from 'react';
 import type { EditableQuote, QuoteSaveInput } from '../../lib/admin-api';
 import { calculateQuoteTotals } from '../../lib/payment-plan';
 
+function formatQuoteDate(value?: string) {
+  if (!value) return '—';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
   quote: EditableQuote;
   onSave: (input: QuoteSaveInput) => Promise<void>;
@@ -35,7 +41,7 @@ export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
     catch { setError('Unable to confirm the quotation.'); }
     finally { setSaving(false); }
   };
-  return <form className="quote-editor" onSubmit={(event) => void save(event)}>
+  return <form className="quote-editor" onSubmit={(event) => void save(event)}><div className="quote-editor__layout"><div className="quote-editor__main">
     <div className="quote-editor__header"><div><p className="eyebrow">{quote.quoteNumber ? `Quote ${quote.quoteNumber} · v${quote.version}` : `Quote v${quote.version}`}</p><h2>{quote.status === 'confirmed' ? 'Create revised quote' : 'Prepare quotation'}</h2></div>{documentActions}</div>
     <div className="quote-editor__lines"><div className="quote-editor__line-header"><span>No.</span><span>Item &amp; description</span><span>Quantity</span><span>Rate</span><span>Amount</span><span aria-hidden="true" /></div>{lines.map((line, index) => <fieldset className="quote-editor__line" key={line.id ?? `${index}-${line.displayName}`}>
       <output className="quote-editor__line-number">{index + 1}</output>
@@ -50,5 +56,6 @@ export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
     <p className="quote-editor__total">Subtotal <b>${totals.subtotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · GST <b>${totals.gstTotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · Quote total <b>${totals.total.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>
     {error && <p className="error" role="alert">{error}</p>}
     <div className="quote-editor__actions"><button className="button" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save quote'}</button>{quote.status !== 'confirmed' && <button className="admin-secondary-button" disabled={saving} onClick={() => void confirm()} type="button">Confirm quote</button>}</div>
+    </div><aside aria-label="Quote information" className="quote-editor__details"><dl><div><dt>Quote no.</dt><dd>{quote.quoteNumber ?? 'Pending'}</dd></div><div><dt>Issue date</dt><dd>{formatQuoteDate(quote.createdAt)}</dd></div><div><dt>Valid date</dt><dd>{formatQuoteDate(expiresOn)}</dd></div></dl></aside></div>
   </form>;
 }

@@ -5,9 +5,20 @@ import { QuoteEditor } from '../components/admin/QuoteEditor';
 
 const quoteWithTbdLine = {
   id: 'quote-1', orderId: 'order-1', version: 1, status: 'draft' as const, total: 0,
-  expiresOn: '2026-10-01', internalNote: '',
-  lines: [{ id: 'line-1', displayName: 'Japandi Cabinetry', unitPrice: 0, quantity: 1, isTbd: true }],
-};
+  quoteNumber: 'QTE-2026090001', createdAt: '2026-09-01T10:00:00.000Z', expiresOn: '2026-10-01', internalNote: '',
+  lines: [{ id: 'line-1', displayName: 'Japandi Cabinetry', unitPrice: 0, quantity: 1, isTbd: true }],};
+
+test('shows the quote number, issued date and valid date in the information panel', () => {
+  render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  const information = screen.getByRole('complementary', { name: 'Quote information' });
+  expect(information).toHaveTextContent('Quote no.');
+  expect(information).toHaveTextContent('QTE-2026090001');
+  expect(information).toHaveTextContent('Issue date');
+  expect(information).toHaveTextContent('1 Sept 2026');
+  expect(information).toHaveTextContent('Valid date');
+  expect(information).toHaveTextContent('1 Oct 2026');
+});
 
 test('blocks quote confirmation while a line remains T.B.D.', async () => {
   const onConfirm = vi.fn();
