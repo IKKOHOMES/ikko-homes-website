@@ -18,6 +18,6 @@ test('reports a document email failure without exposing provider details', async
 test('uses primary action styling for quote document buttons', () => {
   render(<DocumentActions documentType="quote" documentId="quote-1" recipientEmail="client@example.com" />);
 
-  expect(screen.getByRole('button', { name: 'Download PDF' })).toHaveClass('button');
+  expect(screen.getByRole('button', { name: 'Open PDF' })).toHaveClass('button');
   expect(screen.getByRole('button', { name: 'Email Quote' })).toHaveClass('button');
 });

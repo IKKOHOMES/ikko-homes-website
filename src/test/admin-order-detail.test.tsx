@@ -39,3 +39,18 @@ test('keeps document actions hidden while a payment invoice is a draft', async (
   expect(screen.getByText('Cost')).toBeInTheDocument();
   expect(screen.getByText('Natural oak')).toBeInTheDocument();
 });
+
+test('removes the standalone quote document card', async () => {
+  getAdminOrder.mockResolvedValue({
+    order: { id: 'order-1', number: 'ORD-2026090001', customerName: 'Ada Lovelace', status: 'quoted', total: 1000, createdAt: '2026-08-30T00:00:00Z', invoiceStatus: 'none' },
+    customer: { email: 'ada@example.com', phone: '0400 000 000', address: '1 Example Street' },
+    internalNote: '', lines: [{ id: 'line-1', name: 'Japanese Modern Sofa 041', kind: 'furniture', unitPrice: 1000, quantity: 1, finish: 'Natural oak' }], drawings: [], paymentPlan: [],
+    quotes: [{ id: 'quote-1', orderId: 'order-1', version: 1, status: 'confirmed', quoteNumber: 'QTE-2026090001', total: 1000, expiresOn: '2026-10-01', internalNote: '', lines: [{ id: 'quote-line-1', displayName: 'Japanese Modern Sofa 041', unitPrice: 1000, quantity: 1, isTbd: false }] }],
+    invoices: [],
+  });
+
+  render(<MemoryRouter initialEntries={['/admin/orders/order-1']}><Routes><Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} /></Routes></MemoryRouter>);
+
+  expect(await screen.findByRole('button', { name: 'Open PDF' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Quote document' })).not.toBeInTheDocument();
+});
