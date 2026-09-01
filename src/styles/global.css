@@ -352,7 +352,13 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; }
   max-width: none;
 }
 .admin-order-detail__order-lines { grid-column: span 2; }
+.admin-order-lines__header, .admin-order-line { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, .8fr) 70px 110px; }
+.admin-order-lines__header { border-top: 1px solid var(--color-line); display: grid; gap: 1rem; padding: .75rem 0; }
+.admin-order-lines__header span { color: var(--color-muted); font-size: .65rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.admin-order-lines__header span:nth-last-child(-n + 2) { text-align: right; }
+.admin-order-line > :nth-last-child(-n + 2) { text-align: right; }
 @media (max-width: 760px) {
   .admin-order-detail__documents { grid-template-columns: 1fr; }
   .admin-order-detail__order-lines { grid-column: auto; }
+  .admin-order-lines__header, .admin-order-line { gap: .5rem; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, .7fr) 48px 80px; }
 }
