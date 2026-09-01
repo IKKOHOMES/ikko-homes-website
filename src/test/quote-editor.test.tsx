@@ -24,3 +24,17 @@ test('displays the retained IKKO number on a revised quote', () => {
 
   expect(screen.getByText('Quote IKKO2026080001 · v2')).toBeInTheDocument();
 });
+
+test('shows numbered quote columns with each line amount', () => {
+  render(<QuoteEditor quote={{ ...quoteWithTbdLine, lines: [{ id: 'line-1', displayName: 'Japanese Modern Sofa 041', unitPrice: 3290, quantity: 2, isTbd: false }] }} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  const header = screen.getByText('No.').closest('.quote-editor__line-header');
+
+  expect(header).toHaveTextContent('No.');
+  expect(header).toHaveTextContent('Item & description');
+  expect(header).toHaveTextContent('Quantity');
+  expect(header).toHaveTextContent('Rate');
+  expect(header).toHaveTextContent('Amount');
+  expect(screen.getByText('1')).toBeInTheDocument();
+  expect(screen.getByLabelText('Line 1 amount')).toHaveTextContent('$6,580.00');
+});
