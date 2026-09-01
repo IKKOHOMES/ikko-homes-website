@@ -9,7 +9,7 @@ const registeredCustomer = {
     accountType: 'registered' as const, discountPercent: 12.5,
   },
   orders: [
-    { id: 'order-1', number: 'ORDER-1', quoteNumber: 'ORD-2026090001', status: 'reviewing' as const, createdAt: '2026-09-01T10:00:00.000Z', total: 3290 },
+    { id: 'order-1', number: 'ORD-2026090001', quoteNumber: 'QTE-2026090001', status: 'reviewing' as const, createdAt: '2026-09-01T10:00:00.000Z', total: 3290 },
     { id: 'order-2', number: 'ORDER-2', quoteNumber: null, status: 'quoted' as const, createdAt: '2026-08-01T10:00:00.000Z', total: null },
   ], notes: [],
 };
@@ -38,7 +38,7 @@ test('saves a registered customer discount from the CRM detail page', async () =
   expect(await screen.findByText('Discount saved.')).toBeInTheDocument();
 });
 
-test('shows an editable CRM summary and quote history for a customer', async () => {
+test('shows an editable CRM summary and order history for a customer', async () => {
   const user = userEvent.setup();
   render(<MemoryRouter initialEntries={['/admin/customers/customer-1']}><Routes>
     <Route path="/admin/customers/:id" element={<AdminCustomerDetailPage />} />
@@ -50,11 +50,12 @@ test('shows an editable CRM summary and quote history for a customer', async () 
   expect(screen.getAllByText('Orders')).toHaveLength(2);
   expect(screen.getByText('Order total value')).toBeInTheDocument();
   expect(screen.getAllByText('$3,290.00')).toHaveLength(2);
-  expect(screen.getByRole('columnheader', { name: 'Quote no.' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Order no.' })).toBeInTheDocument();
   expect(screen.getByRole('columnheader', { name: 'Date' })).toBeInTheDocument();
   expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
   expect(screen.getByRole('columnheader', { name: 'Total' })).toBeInTheDocument();
   expect(screen.getByText('ORD-2026090001')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Customer discount' }).closest('.customer-crm-top-grid')).not.toBeNull();
   expect(screen.getByText('Pending review')).toBeInTheDocument();
   expect(screen.getByText('Quoted')).toBeInTheDocument();
 

@@ -289,7 +289,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; }
 .admin-invoice-row + .admin-invoice-row { border-top: 1px solid var(--color-line); }
 .admin-invoice-row .admin-line { border-top: 0; padding: 0 0 .65rem; }
 @media (max-width: 760px) { .admin-document-section { align-items: flex-start; flex-direction: column; }.document-actions { width: 100%; }.admin-invoice-row .admin-line { grid-template-columns: 1fr 50px 90px; }.admin-invoice-row .admin-secondary-button { grid-column: 1 / -1; } }
-.customer-crm-top-grid { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); margin-bottom: 1rem; max-width: 1080px; }
+.customer-crm-top-grid { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr) minmax(320px, .72fr); margin-bottom: 1rem; }
 .customer-crm-top-grid .admin-detail-section, .customer-orders-section .admin-detail-section { margin-bottom: 0; max-width: none; }
 .customer-profile-grid { display: grid; gap: .8rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .customer-profile-grid label, .customer-discount-card label { display: grid; font-size: .7rem; font-weight: 700; gap: .45rem; letter-spacing: .06em; text-transform: uppercase; }
