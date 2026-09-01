@@ -362,3 +362,5 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; }
   .admin-order-detail__order-lines { grid-column: auto; }
   .admin-order-lines__header, .admin-order-line { gap: .5rem; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, .7fr) 48px 80px; }
 }
+
+.admin-quote-actions { display: flex; justify-content: flex-end; margin-bottom: 1rem; max-width: 880px; }

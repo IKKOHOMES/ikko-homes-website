@@ -1,12 +1,11 @@
-import { FormEvent, type ReactNode, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import type { EditableQuote, QuoteSaveInput } from '../../lib/admin-api';
 import { calculateQuoteTotals } from '../../lib/payment-plan';
 
-export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
+export function QuoteEditor({ quote, onSave, onConfirm }: {
   quote: EditableQuote;
   onSave: (input: QuoteSaveInput) => Promise<void>;
   onConfirm: (quoteId: string) => Promise<void>;
-  documentActions?: ReactNode;
 }) {
   const [lines, setLines] = useState(quote.lines);
   const [expiresOn, setExpiresOn] = useState(quote.expiresOn);
@@ -49,6 +48,6 @@ export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
     <div className="quote-editor__meta"><label>Discount<input aria-label="Quote discount" min="0" step="0.01" type="number" value={discountTotal || ''} onChange={(event) => setDiscountTotal(Number(event.target.value))} /></label><label>Expiry date<input aria-label="Quote expiry date" type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} /></label><label>Internal note<textarea value={internalNote} onChange={(event) => setInternalNote(event.target.value)} /></label></div>
     <p className="quote-editor__total">Subtotal <b>${totals.subtotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · GST <b>${totals.gstTotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · Quote total <b>${totals.total.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>
     {error && <p className="error" role="alert">{error}</p>}
-    <div className="quote-editor__actions"><button className="button" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save quote'}</button>{documentActions}{quote.status !== 'confirmed' && <button className="admin-secondary-button" disabled={saving} onClick={() => void confirm()} type="button">Confirm quote</button>}</div>
+    <div className="quote-editor__actions"><button className="button" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save quote'}</button>{quote.status !== 'confirmed' && <button className="admin-secondary-button" disabled={saving} onClick={() => void confirm()} type="button">Confirm quote</button>}</div>
   </form>;
 }
