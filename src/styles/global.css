@@ -340,3 +340,18 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; }
   color: var(--color-ink);
   font-family: var(--font-display);
 }
+
+.admin-order-detail__documents {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  margin-bottom: 1rem;
+  max-width: 1380px;
+}
+.admin-order-detail__documents .admin-detail-section {
+  margin-bottom: 0;
+  max-width: none;
+}
+@media (max-width: 760px) {
+  .admin-order-detail__documents { grid-template-columns: 1fr; }
+}

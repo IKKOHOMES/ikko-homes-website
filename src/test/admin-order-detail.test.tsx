@@ -30,5 +30,5 @@ test('keeps document actions hidden while a payment invoice is a draft', async (
   expect(screen.queryByRole('heading', { name: 'Ada Lovelace' })).not.toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Order notes' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Order no.' })).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'Plans' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Attached plans' })).toBeInTheDocument();
 });
