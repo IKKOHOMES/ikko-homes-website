@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { QuoteEditor } from '../components/admin/QuoteEditor';
@@ -8,7 +8,7 @@ const quoteWithTbdLine = {
   quoteNumber: 'QTE-2026090001', createdAt: '2026-09-01T10:00:00.000Z', expiresOn: '2026-10-01', internalNote: '',
   lines: [{ id: 'line-1', displayName: 'Japandi Cabinetry', unitPrice: 0, quantity: 1, isTbd: true }],};
 
-test('shows the quote number, issued date and valid date in the information panel', () => {
+test('shows the quote number and issued date in the information panel', () => {
   render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={vi.fn()} onSave={vi.fn()} />);
 
   const information = screen.getByRole('complementary', { name: 'Quote information' });
@@ -16,8 +16,18 @@ test('shows the quote number, issued date and valid date in the information pane
   expect(information).toHaveTextContent('QTE-2026090001');
   expect(information).toHaveTextContent('Issue date');
   expect(information).toHaveTextContent('1 Sept 2026');
-  expect(information).toHaveTextContent('Valid date');
-  expect(information).toHaveTextContent('1 Oct 2026');
+});
+
+test('edits the expiry date from the quote information panel', () => {
+  render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  const information = screen.getByRole('complementary', { name: 'Quote information' });
+  const expiryDate = within(information).getByLabelText('Quote expiry date');
+  fireEvent.change(expiryDate, { target: { value: '2026-10-15' } });
+
+  expect(expiryDate).toHaveValue('2026-10-15');
+  expect(screen.getAllByLabelText('Quote expiry date')).toHaveLength(1);
+  expect(information).not.toHaveTextContent('Valid date');
 });
 
 test('blocks quote confirmation while a line remains T.B.D.', async () => {

@@ -376,4 +376,5 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; }
 .quote-editor__details dl { display: grid; gap: 1.25rem; margin: 0; }
 .quote-editor__details dt { color: var(--color-orange); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .quote-editor__details dd { font-family: var(--font-display); font-size: 1.2rem; margin: .35rem 0 0; }
+.quote-editor__details input { background: #fff; border: 1px solid var(--color-line); font: inherit; padding: .7rem; width: 100%; }
 @media (max-width: 760px) { .quote-editor__layout { grid-template-columns: 1fr; }.quote-editor__details { border-left: 0; border-top: 1px solid var(--color-line); padding: 1.25rem 0 0; } }
