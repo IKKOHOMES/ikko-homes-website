@@ -102,3 +102,11 @@ test('runs invoice RLS assertions as authenticated with privileged fixture setup
   expect(sql).toContain('set local role authenticated;');
   expect(sql).toContain('RLS-OTHER-I-');
 });
+test('keeps server-only administrator provisioning able to read and create profiles', () => {
+  const migrationPath = 'supabase/migrations/202609010016_admin_provisioning_permissions.sql';
+  const sql = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
+
+  expect(sql).toContain('grant select on public.profiles to service_role');
+  expect(sql).toContain('insert into public.profiles (id, role)');
+  expect(sql).toContain("values (p_profile_id, case when p_is_admin then 'admin' else 'customer' end)");
+});
