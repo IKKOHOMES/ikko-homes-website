@@ -17,6 +17,15 @@ test('blocks quote confirmation while a line remains T.B.D.', async () => {
   expect(onConfirm).not.toHaveBeenCalled();
 });
 
+
+test('renders quote document actions beside Save quote', () => {
+  render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={vi.fn()} onSave={vi.fn()} documentActions={<><button type="button">Download PDF</button><button type="button">Email Quote</button></>} />);
+
+  const actionRow = screen.getByRole('button', { name: 'Save quote' }).parentElement;
+  expect(actionRow).toContainElement(screen.getByRole('button', { name: 'Download PDF' }));
+  expect(actionRow).toContainElement(screen.getByRole('button', { name: 'Email Quote' }));
+});
+
 test('displays the retained IKKO number on a revised quote', () => {
   render(<QuoteEditor quote={{ ...quoteWithTbdLine, version: 2, quoteNumber: 'IKKO2026080001' }} onConfirm={vi.fn()} onSave={vi.fn()} />);
 
