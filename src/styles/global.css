@@ -311,3 +311,32 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; }
 .customer-order-summary b { font-family: var(--font-display); font-size: 1.65rem; font-weight: 400; }
 .customer-order-history .admin-table td:last-child, .customer-order-history .admin-table th:last-child { text-align: right; }
 @media (max-width: 760px) { .customer-crm-top-grid, .customer-order-summary, .customer-profile-grid { grid-template-columns: 1fr; }.customer-profile-grid__full { grid-column: auto; }.customer-discount-card { max-width: none; } }
+
+/* Keep the order overview in the same display typeface as the existing order page. */
+.admin-order-detail__info-grid h2,
+.admin-order-detail__summary h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+.admin-order-detail__customer-name {
+  color: var(--color-ink) !important;
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  line-height: 1.05;
+  margin: 0 0 .7rem !important;
+}
+.admin-order-detail__summary {
+  display: grid;
+  gap: .9rem;
+}
+.admin-order-detail__summary > div + div {
+  border-top: 1px solid var(--color-line);
+  padding-top: .85rem;
+}
+.admin-order-detail__summary h2 {
+  margin-bottom: .35rem;
+}
+.admin-order-detail__summary p {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+}

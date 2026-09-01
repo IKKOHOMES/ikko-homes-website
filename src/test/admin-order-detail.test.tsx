@@ -19,7 +19,7 @@ test('keeps document actions hidden while a payment invoice is a draft', async (
   getAdminOrder.mockResolvedValue({
     order: { id: 'order-1', number: 'IKKO-001', customerName: 'Ada Lovelace', status: 'quoted', total: 1000, createdAt: '2026-08-30T00:00:00Z', invoiceStatus: 'none' },
     customer: { email: 'ada@example.com', phone: '0400 000 000', address: '1 Example Street' },
-    internalNote: '', lines: [], drawings: [], paymentPlan: [], quotes: [],
+    internalNote: '', lines: [], drawings: [{ fileName: 'plan.pdf', signedUrl: 'https://example.test/plan.pdf' }], paymentPlan: [], quotes: [],
     invoices: [{ id: 'invoice-1', number: 'INV-001', total: 500, status: 'draft', dueOn: '2026-09-01', paidAt: null, paymentPlanInstalmentId: null }],
   });
 
@@ -27,4 +27,8 @@ test('keeps document actions hidden while a payment invoice is a draft', async (
 
   expect(await screen.findByRole('button', { name: 'Issue invoice' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Email invoice' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Ada Lovelace' })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Order notes' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Order no.' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Plans' })).toBeInTheDocument();
 });
