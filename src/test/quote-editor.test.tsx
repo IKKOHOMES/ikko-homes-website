@@ -30,6 +30,21 @@ test('edits the expiry date from the quote information panel', () => {
   expect(information).not.toHaveTextContent('Valid date');
 });
 
+test('uses a percentage discount to calculate the discounted subtotal', () => {
+  render(<QuoteEditor quote={{ ...quoteWithTbdLine, discountTotal: 100, lines: [{ id: 'line-1', displayName: 'Cabinetry', unitPrice: 1000, quantity: 1, isTbd: false }] }} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  const discount = screen.getByLabelText('Quote discount percentage');
+  const summary = document.querySelector('.quote-editor__total');
+  expect(discount).toHaveValue(10);
+  expect(summary).toHaveTextContent('Discounted subtotal $900.00');
+
+  fireEvent.change(discount, { target: { value: '20' } });
+
+  expect(summary).toHaveTextContent('Discounted subtotal $800.00');
+  expect(summary).toHaveTextContent('GST $80.00');
+  expect(summary).toHaveTextContent('Quote total $880.00');
+});
+
 test('blocks quote confirmation while a line remains T.B.D.', async () => {
   const onConfirm = vi.fn();
   render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={onConfirm} onSave={vi.fn()} />);

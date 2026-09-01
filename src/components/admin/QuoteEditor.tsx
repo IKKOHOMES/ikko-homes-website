@@ -16,7 +16,9 @@ export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
 }) {
   const [lines, setLines] = useState(quote.lines);
   const [expiresOn, setExpiresOn] = useState(quote.expiresOn);
-  const [discountTotal, setDiscountTotal] = useState(quote.discountTotal ?? 0);
+  const subtotal = useMemo(() => calculateQuoteTotals(lines.filter((line) => !line.isTbd), 0).subtotal, [lines]);
+  const [discountPercentage, setDiscountPercentage] = useState(() => subtotal > 0 ? ((quote.discountTotal ?? 0) / subtotal) * 100 : 0);
+  const discountTotal = useMemo(() => subtotal * discountPercentage / 100, [discountPercentage, subtotal]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const totals = useMemo(() => calculateQuoteTotals(lines.filter((line) => !line.isTbd), discountTotal), [lines, discountTotal]);
@@ -24,7 +26,7 @@ export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (!expiresOn) { setError('Choose a quote expiry date.'); return; }
-    if (!Number.isFinite(discountTotal) || discountTotal < 0) { setError('Enter a non-negative discount.'); return; }
+    if (!Number.isFinite(discountPercentage) || discountPercentage < 0 || discountPercentage > 100) { setError('Enter a discount between 0% and 100%.'); return; }
     if (!lines.length || lines.some((line) => !line.displayName.trim() || !Number.isInteger(line.quantity) || line.quantity <= 0 || (!line.isTbd && (!Number.isFinite(line.unitPrice) || line.unitPrice < 0)))) { setError('Complete every quote line before saving.'); return; }
     setSaving(true); setError('');
     try { await onSave({ quoteId: quote.id, orderId: quote.orderId, expiresOn, internalNote: quote.internalNote, discountTotal, lines }); }
@@ -33,7 +35,7 @@ export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
   };
   const confirm = async () => {
     if (!expiresOn) { setError('Choose a quote expiry date.'); return; }
-    if (!Number.isFinite(discountTotal) || discountTotal < 0) { setError('Enter a non-negative discount.'); return; }
+    if (!Number.isFinite(discountPercentage) || discountPercentage < 0 || discountPercentage > 100) { setError('Enter a discount between 0% and 100%.'); return; }
     if (lines.some((line) => line.isTbd)) { setError('Price every quote line before confirming.'); return; }
     if (lines.some((line) => !line.displayName.trim() || !Number.isInteger(line.quantity) || line.quantity <= 0 || !Number.isFinite(line.unitPrice) || line.unitPrice < 0)) { setError('Complete every quote line before confirming.'); return; }
     setSaving(true); setError('');
@@ -52,8 +54,8 @@ export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
       <div className="quote-editor__line-actions"><button className="admin-text-button admin-text-button--danger" type="button" onClick={() => setLines((current) => current.filter((_, currentIndex) => currentIndex !== index))}>Remove</button></div>
     </fieldset>)}</div>
     <button className="admin-secondary-button" type="button" onClick={() => setLines((current) => [...current, { displayName: '', unitPrice: 0, quantity: 1, isTbd: false }])}>Add row</button>
-    <div className="quote-editor__meta"><label>Discount<input aria-label="Quote discount" min="0" step="0.01" type="number" value={discountTotal || ''} onChange={(event) => setDiscountTotal(Number(event.target.value))} /></label></div>
-    <p className="quote-editor__total">Subtotal <b>${totals.subtotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · GST <b>${totals.gstTotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · Quote total <b>${totals.total.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>
+    <div className="quote-editor__meta"><p className="quote-editor__subtotal">Subtotal <b>${subtotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p><label className="quote-editor__discount">Discount<span><input aria-label="Quote discount percentage" max="100" min="0" step="0.01" type="number" value={discountPercentage || ''} onChange={(event) => setDiscountPercentage(Number(event.target.value))} /><b>%</b></span></label></div>
+    <p className="quote-editor__total">Discounted subtotal <b>${(totals.subtotal - totals.discountTotal).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · GST <b>${totals.gstTotal.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> · Quote total <b>${totals.total.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>
     {error && <p className="error" role="alert">{error}</p>}
     <div className="quote-editor__actions"><button className="button" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save quote'}</button>{quote.status !== 'confirmed' && <button className="admin-secondary-button" disabled={saving} onClick={() => void confirm()} type="button">Confirm quote</button>}</div>
     </div><aside aria-label="Quote information" className="quote-editor__details"><dl><div><dt>Quote no.</dt><dd>{quote.quoteNumber ?? 'Pending'}</dd></div><div><dt>Issue date</dt><dd>{formatQuoteDate(quote.createdAt)}</dd></div><div><dt>Expiry date</dt><dd><input aria-label="Quote expiry date" type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} /></dd></div></dl></aside></div>
