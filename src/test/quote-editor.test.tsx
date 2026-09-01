@@ -52,3 +52,18 @@ test('does not show an internal note field in the quote editor', () => {
 
   expect(screen.queryByText('Internal note')).not.toBeInTheDocument();
 });
+
+test('replaces a T.B.D. rate with a numeric quote', async () => {
+  const user = userEvent.setup();
+  render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  const rate = screen.getByLabelText('Line 1 rate');
+  expect(rate).toHaveValue('T.B.D.');
+  expect(screen.queryByLabelText('Line 1 T.B.D.')).not.toBeInTheDocument();
+
+  await user.click(rate);
+  await user.keyboard('1250');
+
+  expect(rate).toHaveValue('1250');
+  expect(screen.getByLabelText('Line 1 amount')).toHaveTextContent('$1,250.00');
+});
