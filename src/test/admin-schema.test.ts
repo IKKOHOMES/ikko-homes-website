@@ -110,3 +110,12 @@ test('keeps server-only administrator provisioning able to read and create profi
   expect(sql).toContain('insert into public.profiles (id, role)');
   expect(sql).toContain("values (p_profile_id, case when p_is_admin then 'admin' else 'customer' end)");
 });
+
+test('allows authenticated administrators to persist quote edits while RLS remains authoritative', () => {
+  const migrationPath = 'supabase/migrations/202609010017_admin_quote_save_grants.sql';
+  const sql = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
+
+  expect(sql).toContain('grant select, insert, update, delete on public.quotes, public.quote_lines to authenticated');
+  expect(sql).toContain('grant insert on public.order_status_events to authenticated');
+  expect(sql).not.toContain(' to anon');
+});
