@@ -119,3 +119,12 @@ test('allows authenticated administrators to persist quote edits while RLS remai
   expect(sql).toContain('grant insert on public.order_status_events to authenticated');
   expect(sql).not.toContain(' to anon');
 });
+
+test('allows authenticated administrators to load and manage Customer CRM data while RLS remains authoritative', () => {
+  const migrationPath = 'supabase/migrations/202609010018_admin_customer_crm_grants.sql';
+  const sql = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
+
+  expect(sql).toContain('grant select, update on public.customers to authenticated');
+  expect(sql).toContain('grant select, insert on public.customer_notes to authenticated');
+  expect(sql).not.toContain(' to anon');
+});
