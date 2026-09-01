@@ -18,8 +18,8 @@ export function DocumentActions({ documentType, documentId, recipientEmail, disa
     finally { setWorking(null); }
   };
   return <div className="document-actions">
-    <button className="admin-secondary-button" disabled={disabled || working !== null} onClick={() => void download()} type="button">{working === 'download' ? 'Preparing PDF…' : 'Download PDF'}</button>
-    <button className="admin-secondary-button" disabled={disabled || working !== null || !recipientEmail} onClick={() => void email()} type="button">{working === 'email' ? 'Sending…' : `Email ${label}`}</button>
+    <button className="button" disabled={disabled || working !== null} onClick={() => void download()} type="button">{working === 'download' ? 'Preparing PDF…' : 'Download PDF'}</button>
+    <button className="button" disabled={disabled || working !== null || !recipientEmail} onClick={() => void email()} type="button">{working === 'email' ? 'Sending…' : `Email ${label}`}</button>
     {message && <p className={message.startsWith('Unable') ? 'error' : 'admin-success'} role="status">{message}</p>}
   </div>;
 }
