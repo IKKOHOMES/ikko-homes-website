@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useCart } from '../../context/CartContext';
 import { themes } from '../../data/themes';
-import ikkoHeaderLogo from '../../assets/ikko-logo-header.png';
+import ikkoHeaderLogo from '../../assets/ikko-logo-primary.png';
 import { SiteSearchModal } from './SiteSearchModal';
 
 function formatPrice(value: number) {

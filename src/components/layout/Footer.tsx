@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Facebook, Instagram, Youtube } from 'lucide-react';
-import ikkoLogo from '../../assets/ikko-logo.png';
+import ikkoLogo from '../../assets/ikko-logo-primary.png';
 
 function RednoteIcon({ size = 18 }: { size?: number }) {
   return (
