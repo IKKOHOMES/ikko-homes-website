@@ -38,3 +38,17 @@ test('shows numbered quote columns with each line amount', () => {
   expect(screen.getByText('1')).toBeInTheDocument();
   expect(screen.getByLabelText('Line 1 amount')).toHaveTextContent('$6,580.00');
 });
+
+test('shows each quote column label only in the table header', () => {
+  render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  expect(screen.getAllByText('Item & description')).toHaveLength(1);
+  expect(screen.getAllByText('Quantity')).toHaveLength(1);
+  expect(screen.getAllByText('Rate')).toHaveLength(1);
+});
+
+test('does not show an internal note field in the quote editor', () => {
+  render(<QuoteEditor quote={quoteWithTbdLine} onConfirm={vi.fn()} onSave={vi.fn()} />);
+
+  expect(screen.queryByText('Internal note')).not.toBeInTheDocument();
+});
