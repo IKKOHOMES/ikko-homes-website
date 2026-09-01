@@ -184,7 +184,8 @@ if (import.meta.main) Deno.serve(async (request) => {
     });
     const furnitureDiscountTotal = pricedFurnitureLines.reduce((total, line) => total + line.discountTotal, 0);
 
-    const orderNumber = `ORD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const { data: orderNumber, error: orderNumberError } = await admin.rpc('reserve_order_number');
+    if (orderNumberError || typeof orderNumber !== 'string') throw new Error('Unable to allocate an order number.');
     const { data: order, error: orderError } = await admin.from('orders').insert({
       order_number: orderNumber,
       customer_id: customer.id,

@@ -12,6 +12,13 @@ declare
   v_twenty_seventh uuid;
   v_quote_number text;
 begin
+  if public.order_number_alpha_suffix(0) <> 'AAAA'
+    or public.order_number_alpha_suffix(1) <> 'AAAB'
+    or public.order_number_alpha_suffix(25) <> 'AAAZ'
+    or public.order_number_alpha_suffix(26) <> 'AABA' then
+    raise exception 'Order alphabetic suffix conversion is incorrect';
+  end if;
+
   if public.excel_milestone_suffix(1) <> 'A'
     or public.excel_milestone_suffix(26) <> 'Z'
     or public.excel_milestone_suffix(27) <> 'AA'
@@ -33,7 +40,7 @@ begin
     values (v_quote, 'Numbering test', 1000, 1, false);
 
   v_quote_number := public.ensure_quote_number(v_quote);
-  if v_quote_number !~ '^ORD-[0-9]{6}0001$' then
+  if v_quote_number !~ '^QTE-[0-9]{6}0001$' then
     raise exception 'New quote number has wrong format: %', v_quote_number;
   end if;
 
@@ -81,7 +88,7 @@ begin
   -- A persisted historical INV root must be considered when the quote number
   -- is allocated, not when its first draft invoice is allocated. The quote is
   -- deliberately drafted in a prior month: confirmation assigns this month's
-  -- ORD prefix.
+  -- QTE prefix.
   insert into public.invoices (invoice_number, order_id, customer_name, customer_email, customer_address, total, status, due_on)
     values ('INV-' || v_period || '0002A', v_legacy_order, 'Collision Test', 'collision@example.test', '1 Test Street', 100, 'issued', current_date);
   insert into public.quotes (order_id, version, status, total, expires_on, created_at)
@@ -89,7 +96,7 @@ begin
     returning id into v_new_quote;
   insert into public.quote_lines (quote_id, display_name, unit_price, quantity, is_tbd)
     values (v_new_quote, 'New numbering quote', 100, 1, false);
-  if public.ensure_quote_number(v_new_quote) <> 'ORD-' || v_period || '0003' then
+  if public.ensure_quote_number(v_new_quote) <> 'QTE-' || v_period || '0003' then
     raise exception 'Quote number did not use confirmation month or skip the reserved invoice root';
   end if;
 
@@ -106,7 +113,7 @@ begin
     values (v_legacy_order, v_legacy_quote, 1, 'First payment', 100, 100, current_date, 'draft')
     returning id into v_legacy_plan;
 
-  -- The legacy record remains untouched; a new ORD quote is allocated around
+  -- The legacy record remains untouched; a new QTE quote is allocated around
   -- its INV root, so the invoice keeps the same root as the quote.
   insert into public.invoices (invoice_number, order_id, customer_name, customer_email, customer_address, total, status, due_on)
     values ('IKKO-9999', v_legacy_order, 'Collision Test', 'collision@example.test', '1 Test Street', 100, 'issued', current_date);
