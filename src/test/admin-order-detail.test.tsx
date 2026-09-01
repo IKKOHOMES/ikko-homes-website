@@ -31,4 +31,5 @@ test('keeps document actions hidden while a payment invoice is a draft', async (
   expect(screen.getByRole('heading', { name: 'Order notes' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Order no.' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Attached plans' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Order lines' }).closest('section')).toHaveClass('admin-order-detail__order-lines');
 });
