@@ -167,23 +167,23 @@ export async function listCustomers(query = ''): Promise<AdminCustomer[]> {
   return ((data ?? []) as unknown as CustomerRow[]).map(mapAdminCustomerRow).filter((customer) => !search || customer.name.toLowerCase().includes(search) || customer.email.toLowerCase().includes(search));
 }
 
-export type AdminCustomerDetail = { customer: AdminCustomer; orders: Array<{ id: string; number: string; status: OrderStatus; createdAt: string; total: number | null }>; notes: Array<{ id: string; body: string; createdAt: string }> };
+export type AdminCustomerDetail = { customer: AdminCustomer; orders: Array<{ id: string; number: string; quoteNumber: string | null; status: OrderStatus; createdAt: string; total: number | null }>; notes: Array<{ id: string; body: string; createdAt: string }> };
 
 type CustomerDetailRow = Omit<CustomerRow, 'orders'> & {
-  orders: Array<{ id: string; order_number: string; status: OrderStatus; created_at: string; order_lines: Array<{ unit_price: number | string | null; quantity: number; line_kind: 'furniture' | 'cabinetry' }>; quotes: Array<{ total: number | string; version: number }> }>;
+  orders: Array<{ id: string; order_number: string; status: OrderStatus; created_at: string; order_lines: Array<{ unit_price: number | string | null; quantity: number; line_kind: 'furniture' | 'cabinetry' }>; quotes: Array<{ total: number | string; version: number; quote_number: string | null }> }>;
   customer_notes: Array<{ id: string; body: string; created_at: string }>;
 };
 
 export async function getCustomer(id: string): Promise<AdminCustomerDetail> {
-  const { data, error } = await getAdminSupabaseClient().from('customers').select('id, first_name, last_name, email, phone, address, auth_user_id, discount_percent, orders(id, order_number, status, created_at, order_lines(unit_price, quantity, line_kind), quotes(total, version)), customer_notes(id, body, created_at)').eq('id', id).single();
+  const { data, error } = await getAdminSupabaseClient().from('customers').select('id, first_name, last_name, email, phone, address, auth_user_id, discount_percent, orders(id, order_number, status, created_at, order_lines(unit_price, quantity, line_kind), quotes(total, version, quote_number)), customer_notes(id, body, created_at)').eq('id', id).single();
   if (error || !data) throw new Error('Unable to load customer.');
   const row = data as unknown as CustomerDetailRow;
   const customer = mapAdminCustomerRow({ ...row, orders: row.orders.map((order) => ({ created_at: order.created_at })) });
   const orders = row.orders.map((order) => {
     const hasCabinetry = order.order_lines.some((line) => line.line_kind === 'cabinetry');
-    const latestQuote = order.quotes.reduce<{ total: number | string; version: number } | null>((latest, quote) => !latest || quote.version > latest.version ? quote : latest, null);
+    const latestQuote = order.quotes.reduce<{ total: number | string; version: number; quote_number: string | null } | null>((latest, quote) => !latest || quote.version > latest.version ? quote : latest, null);
     const total = hasCabinetry ? (latestQuote ? Number(latestQuote.total) : null) : order.order_lines.reduce((sum, line) => sum + (line.unit_price === null ? 0 : Number(line.unit_price) * line.quantity), 0);
-    return { id: order.id, number: order.order_number, status: order.status, createdAt: order.created_at, total };
+    return { id: order.id, number: order.order_number, quoteNumber: latestQuote?.quote_number ?? null, status: order.status, createdAt: order.created_at, total };
   }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return { customer, orders, notes: row.customer_notes.map((note) => ({ id: note.id, body: note.body, createdAt: note.created_at })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
 }
@@ -204,6 +204,18 @@ export async function updateCustomerDiscount(customerId: string, discountPercent
   if (error || !data) throw new Error('Unable to update the customer discount.');
 }
 
+export type CustomerProfileInput = { firstName: string; lastName: string; email: string; phone: string; address: string };
+
+export async function updateCustomerProfile(customerId: string, input: CustomerProfileInput): Promise<void> {
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  const email = input.email.trim();
+  const phone = input.phone.trim();
+  const address = input.address.trim();
+  if (!firstName || !lastName || !/^\S+@\S+\.\S+$/.test(email) || !phone || !address) throw new Error('Enter the customer name, email, phone and project address.');
+  const { data, error } = await getAdminSupabaseClient().from('customers').update({ first_name: firstName, last_name: lastName, email, phone, address }).eq('id', customerId).select('id').maybeSingle();
+  if (error || !data) throw new Error('Unable to update customer details.');
+}
 export type ProductSaveInput = Omit<ManagedProduct, 'id' | 'detailContent'> & { id?: string; imageFile?: File; detailContent: ProductDetailContent };
 type ProductColourRow = { id: string; name: string; hex_code: string };
 type ProductRow = { id: string; name: string; slug: string; description: string; detail_content?: unknown; price: number | string; category: string; subcategory: string; category_id: string | null; theme_slugs: string[]; image_path: string | null; is_active: boolean; display_order: number; product_finishes: Array<{ name: string; display_order: number; product_colours?: ProductColourRow | ProductColourRow[] | null }> };
