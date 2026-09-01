@@ -170,20 +170,21 @@ export async function listCustomers(query = ''): Promise<AdminCustomer[]> {
 export type AdminCustomerDetail = { customer: AdminCustomer; orders: Array<{ id: string; number: string; quoteNumber: string | null; status: OrderStatus; createdAt: string; total: number | null }>; notes: Array<{ id: string; body: string; createdAt: string }> };
 
 type CustomerDetailRow = Omit<CustomerRow, 'orders'> & {
-  orders: Array<{ id: string; order_number: string; status: OrderStatus; created_at: string; order_lines: Array<{ unit_price: number | string | null; quantity: number; line_kind: 'furniture' | 'cabinetry' }>; quotes: Array<{ total: number | string; version: number; quote_number: string | null }> }>;
+  orders: Array<{ id: string; order_number: string; status: OrderStatus; created_at: string; order_lines: Array<{ unit_price: number | string | null; quantity: number; line_kind: 'furniture' | 'cabinetry' }>; quotes: Array<{ id: string; total: number | string; version: number; quote_number: string | null; quote_number_source_id: string | null }> }>;
   customer_notes: Array<{ id: string; body: string; created_at: string }>;
 };
 
 export async function getCustomer(id: string): Promise<AdminCustomerDetail> {
-  const { data, error } = await getAdminSupabaseClient().from('customers').select('id, first_name, last_name, email, phone, address, auth_user_id, discount_percent, orders(id, order_number, status, created_at, order_lines(unit_price, quantity, line_kind), quotes(total, version, quote_number)), customer_notes(id, body, created_at)').eq('id', id).single();
+  const { data, error } = await getAdminSupabaseClient().from('customers').select('id, first_name, last_name, email, phone, address, auth_user_id, discount_percent, orders(id, order_number, status, created_at, order_lines(unit_price, quantity, line_kind), quotes(id, total, version, quote_number, quote_number_source_id)), customer_notes(id, body, created_at)').eq('id', id).single();
   if (error || !data) throw new Error('Unable to load customer.');
   const row = data as unknown as CustomerDetailRow;
   const customer = mapAdminCustomerRow({ ...row, orders: row.orders.map((order) => ({ created_at: order.created_at })) });
   const orders = row.orders.map((order) => {
     const hasCabinetry = order.order_lines.some((line) => line.line_kind === 'cabinetry');
-    const latestQuote = order.quotes.reduce<{ total: number | string; version: number; quote_number: string | null } | null>((latest, quote) => !latest || quote.version > latest.version ? quote : latest, null);
+    const latestQuote = order.quotes.reduce<CustomerDetailRow['orders'][number]['quotes'][number] | null>((latest, quote) => !latest || quote.version > latest.version ? quote : latest, null);
+    const quoteNumbers = new Map(order.quotes.map((quote) => [quote.id, quote.quote_number]));
     const total = hasCabinetry ? (latestQuote ? Number(latestQuote.total) : null) : order.order_lines.reduce((sum, line) => sum + (line.unit_price === null ? 0 : Number(line.unit_price) * line.quantity), 0);
-    return { id: order.id, number: order.order_number, quoteNumber: latestQuote?.quote_number ?? null, status: order.status, createdAt: order.created_at, total };
+    return { id: order.id, number: order.order_number, quoteNumber: latestQuote?.quote_number ?? quoteNumbers.get(latestQuote?.quote_number_source_id ?? '') ?? null, status: order.status, createdAt: order.created_at, total };
   }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return { customer, orders, notes: row.customer_notes.map((note) => ({ id: note.id, body: note.body, createdAt: note.created_at })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
 }
