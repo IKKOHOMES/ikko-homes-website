@@ -6,11 +6,9 @@ test('formats a monthly QTE quote number with a four-digit sequence', () => {
   expect(formatQuoteNumber('2026-08-30', 42)).toBe('QTE-2026080042');
 });
 
-test('formats a monthly order number with a four-letter sequence', () => {
-  expect(formatOrderNumber('2026-09-01', 0)).toBe('ORD-202609AAAA');
-  expect(formatOrderNumber('2026-09-01', 1)).toBe('ORD-202609AAAB');
-  expect(formatOrderNumber('2026-09-01', 25)).toBe('ORD-202609AAAZ');
-  expect(formatOrderNumber('2026-09-01', 26)).toBe('ORD-202609AABA');
+test('formats a monthly order number with a four-digit sequence', () => {
+  expect(formatOrderNumber('2026-09-01', 1)).toBe('ORD-2026090001');
+  expect(formatOrderNumber('2026-09-01', 42)).toBe('ORD-2026090042');
 });
 
 test('formats invoice milestone suffixes in payment-plan sequence order', () => {

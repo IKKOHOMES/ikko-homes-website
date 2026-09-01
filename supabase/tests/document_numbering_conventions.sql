@@ -12,11 +12,8 @@ declare
   v_twenty_seventh uuid;
   v_quote_number text;
 begin
-  if public.order_number_alpha_suffix(0) <> 'AAAA'
-    or public.order_number_alpha_suffix(1) <> 'AAAB'
-    or public.order_number_alpha_suffix(25) <> 'AAAZ'
-    or public.order_number_alpha_suffix(26) <> 'AABA' then
-    raise exception 'Order alphabetic suffix conversion is incorrect';
+  if public.reserve_order_number() !~ '^ORD-[0-9]{6}0001$' then
+    raise exception 'Order number has wrong format';
   end if;
 
   if public.excel_milestone_suffix(1) <> 'A'
