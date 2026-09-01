@@ -40,7 +40,7 @@ test('keeps document actions hidden while a payment invoice is a draft', async (
   expect(screen.getByText('Natural oak')).toBeInTheDocument();
 });
 
-test('places quote document actions above the editor without a standalone card', async () => {
+test('places quote document actions in the editor header', async () => {
   getAdminOrder.mockResolvedValue({
     order: { id: 'order-1', number: 'ORD-2026090001', customerName: 'Ada Lovelace', status: 'quoted', total: 1000, createdAt: '2026-08-30T00:00:00Z', invoiceStatus: 'none' },
     customer: { email: 'ada@example.com', phone: '0400 000 000', address: '1 Example Street' },
@@ -54,7 +54,7 @@ test('places quote document actions above the editor without a standalone card',
   const openPdf = await screen.findByRole('button', { name: 'Open PDF' });
   const quoteEditor = screen.getByRole('heading', { name: 'Create revised quote' }).closest('form');
 
-  expect(quoteEditor).not.toContainElement(openPdf);
-  expect(openPdf.compareDocumentPosition(quoteEditor!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(quoteEditor).toContainElement(openPdf);
+  expect(openPdf.closest('.quote-editor__header')).toContainElement(openPdf);
   expect(screen.queryByRole('heading', { name: 'Quote document' })).not.toBeInTheDocument();
 });

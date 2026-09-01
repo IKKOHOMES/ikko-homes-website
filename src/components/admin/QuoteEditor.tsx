@@ -1,11 +1,12 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, type ReactNode, useMemo, useState } from 'react';
 import type { EditableQuote, QuoteSaveInput } from '../../lib/admin-api';
 import { calculateQuoteTotals } from '../../lib/payment-plan';
 
-export function QuoteEditor({ quote, onSave, onConfirm }: {
+export function QuoteEditor({ quote, onSave, onConfirm, documentActions }: {
   quote: EditableQuote;
   onSave: (input: QuoteSaveInput) => Promise<void>;
   onConfirm: (quoteId: string) => Promise<void>;
+  documentActions?: ReactNode;
 }) {
   const [lines, setLines] = useState(quote.lines);
   const [expiresOn, setExpiresOn] = useState(quote.expiresOn);
@@ -36,7 +37,7 @@ export function QuoteEditor({ quote, onSave, onConfirm }: {
     finally { setSaving(false); }
   };
   return <form className="quote-editor" onSubmit={(event) => void save(event)}>
-    <div><p className="eyebrow">{quote.quoteNumber ? `Quote ${quote.quoteNumber} · v${quote.version}` : `Quote v${quote.version}`}</p><h2>{quote.status === 'confirmed' ? 'Create revised quote' : 'Prepare quotation'}</h2></div>
+    <div className="quote-editor__header"><div><p className="eyebrow">{quote.quoteNumber ? `Quote ${quote.quoteNumber} · v${quote.version}` : `Quote v${quote.version}`}</p><h2>{quote.status === 'confirmed' ? 'Create revised quote' : 'Prepare quotation'}</h2></div>{documentActions}</div>
     <div className="quote-editor__lines">{lines.map((line, index) => <fieldset className="quote-editor__line" key={line.id ?? `${index}-${line.displayName}`}>
       <label>Description<input aria-label={`Line ${index + 1} description`} value={line.displayName} onChange={(event) => updateLine(index, { displayName: event.target.value })} /></label>
       <label>Qty<input aria-label={`Line ${index + 1} quantity`} min="1" type="number" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} /></label>
